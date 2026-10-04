@@ -1,0 +1,7 @@
+whaledoc:
+  api:
+    url: ${whaledoc.api.url}
+
+  endpoints:
+    cliAuthSessions: /cli/auth/sessions
+    cliWebhookEvents: /cli/webhooks/events
