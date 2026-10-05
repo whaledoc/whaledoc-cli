@@ -24,11 +24,18 @@ public final class AuthClient {
     private final ObjectMapper objectMapper;
 
     public AuthClient() {
+        this(new ObjectMapper());
+    }
 
+    private AuthClient(ObjectMapper objectMapper) {
+        this(new ApiClient(objectMapper), new SseClient(), objectMapper);
+    }
 
-        this.objectMapper = new ObjectMapper();
-        this.apiClient = new ApiClient(objectMapper);
-        this.sseClient = new SseClient();
+    public AuthClient(ApiClient apiClient, SseClient sseClient, ObjectMapper objectMapper) {
+
+        this.apiClient = apiClient;
+        this.sseClient = sseClient;
+        this.objectMapper = objectMapper;
     }
 
     public AuthSession createSession(String cliId) {

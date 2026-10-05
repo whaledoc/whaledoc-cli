@@ -23,9 +23,13 @@ public final class WebhookClient {
     private final HttpClient httpClient;
 
     public WebhookClient() {
-        this.apiClient = new ApiClient(new ObjectMapper());
-        this.sseClient = new SseClient();
-        this.httpClient = HttpClient.newHttpClient();
+        this(new ApiClient(new ObjectMapper()), new SseClient(), HttpClient.newHttpClient());
+    }
+
+    public WebhookClient(ApiClient apiClient, SseClient sseClient, HttpClient httpClient) {
+        this.apiClient = apiClient;
+        this.sseClient = sseClient;
+        this.httpClient = httpClient;
     }
 
     public void forward(String url, SseEvent event) {
