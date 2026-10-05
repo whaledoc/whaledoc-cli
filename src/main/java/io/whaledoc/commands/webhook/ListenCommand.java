@@ -44,8 +44,8 @@ public class ListenCommand implements Runnable {
 
     private static final DateTimeFormatter TIMESTAMP_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
-    private final ConfigManager configManager = new ConfigManager();
-    private final WebhookClient webhookClient = new WebhookClient();
+    private final ConfigManager configManager;
+    private final WebhookClient webhookClient;
 
     @Option(
             names = {"-e", "--events"},
@@ -62,6 +62,15 @@ public class ListenCommand implements Runnable {
             description = "The URL to forward webhook events to."
     )
     private String forwardTo;
+
+    public ListenCommand() {
+        this(new ConfigManager(), new WebhookClient());
+    }
+
+    public ListenCommand(ConfigManager configManager, WebhookClient webhookClient) {
+        this.configManager = configManager;
+        this.webhookClient = webhookClient;
+    }
 
     @Override
     public void run() {
