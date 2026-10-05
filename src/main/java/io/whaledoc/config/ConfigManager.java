@@ -8,6 +8,9 @@ import lombok.extern.slf4j.Slf4j;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
+import java.util.Set;
 import java.util.UUID;
 
 @Slf4j
@@ -15,6 +18,7 @@ public final class ConfigManager {
 
     private static final String APP_NAME = "WhaleDoc";
     private static final String CONFIG_FILE_NAME = "config.json";
+    private static final Set<PosixFilePermission> OWNER_READ_WRITE = PosixFilePermissions.fromString("rw-------");
 
     private final ObjectMapper objectMapper;
     private final Path configDirectory;
@@ -62,6 +66,7 @@ public final class ConfigManager {
 
         try {
             Files.createDirectories(configDirectory);
+            restrictToOwner();
 
             objectMapper
                     .writerWithDefaultPrettyPrinter()
@@ -70,6 +75,22 @@ public final class ConfigManager {
         } catch (IOException e) {
             throw new ConfigException("Unable to save WhaleDoc configuration.", e);
         }
+    }
+
+    // The config holds the access token, so on macOS and Linux only the user may read it.
+    // On Windows, the config directory under %APPDATA% is already private to the user.
+    private void restrictToOwner() throws IOException {
+
+        if (!configDirectory.getFileSystem().supportedFileAttributeViews().contains("posix")) {
+            return;
+        }
+
+        if (Files.notExists(configFile)) {
+            Files.createFile(configFile, PosixFilePermissions.asFileAttribute(OWNER_READ_WRITE));
+        }
+
+        // Also tightens config files created by earlier versions
+        Files.setPosixFilePermissions(configFile, OWNER_READ_WRITE);
     }
 
     private static Path resolveConfigDirectory() {
