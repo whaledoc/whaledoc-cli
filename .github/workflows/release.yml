@@ -1,0 +1,138 @@
+name: Release
+
+# Publishes a GitHub release with native executables for every platform.
+#
+# Start it from Actions > Release > Run workflow on main and pick major, minor or patch:
+# the next version is calculated from the latest release tag. The tag is only created
+# once every build has passed. Pushing a v* tag by hand releases that exact version.
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Part of the version to increase
+        type: choice
+        options: [patch, minor, major]
+        required: true
+      prerelease:
+        description: Optional pre-release label, e.g. beta.1. Leave empty for a stable release.
+        type: string
+        required: false
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Determine version
+        id: version
+        env:
+          BUMP: ${{ inputs.bump }}
+          LABEL: ${{ inputs.prerelease }}
+        run: |
+          set -euo pipefail
+
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            tag="$GITHUB_REF_NAME"
+          else
+            if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+              echo "::error::Releases can only be created from main"
+              exit 1
+            fi
+
+            # Bump from the latest stable release; the first release starts from v0.0.0
+            latest="$(git tag --list 'v*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 || true)"
+            IFS=. read -r major minor patch <<< "${latest:-v0.0.0}"
+            major="${major#v}"
+
+            case "$BUMP" in
+              major) major=$((major + 1)); minor=0; patch=0 ;;
+              minor) minor=$((minor + 1)); patch=0 ;;
+              patch) patch=$((patch + 1)) ;;
+            esac
+
+            tag="v$major.$minor.$patch${LABEL:+-$LABEL}"
+
+            if git rev-parse -q --verify "refs/tags/$tag" > /dev/null; then
+              echo "::error::Tag $tag already exists"
+              exit 1
+            fi
+          fi
+
+          version="${tag#v}"
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::'$tag' is not a valid version tag (expected e.g. v1.2.3 or v1.2.3-beta.1)"
+            exit 1
+          fi
+
+          prerelease=false
+          [[ "$version" == *-* ]] && prerelease=true
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+          echo "Releasing **$tag** (pre-release: $prerelease)" >> "$GITHUB_STEP_SUMMARY"
+
+  native:
+    needs: version
+    uses: ./.github/workflows/native.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
+
+  publish:
+    needs: [version, native]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          pattern: whaledoc-*
+          merge-multiple: true
+
+      - name: Add install scripts and checksums
+        run: |
+          cp install.sh install.ps1 dist/
+          cd dist
+          sha256sum * > checksums.txt
+          cat checksums.txt
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.version.outputs.tag }}
+          PRERELEASE: ${{ needs.version.outputs.prerelease }}
+        run: |
+          args=(--title "$TAG" --generate-notes)
+
+          # A pushed tag already exists; otherwise the release creates the tag on the built commit
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            args+=(--verify-tag)
+          else
+            args+=(--target "$GITHUB_SHA")
+          fi
+
+          [ "$PRERELEASE" = "true" ] && args+=(--prerelease)
+
+          gh release create "$TAG" dist/* "${args[@]}"
