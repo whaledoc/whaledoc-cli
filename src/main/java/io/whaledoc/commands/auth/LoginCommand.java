@@ -4,14 +4,13 @@ import io.whaledoc.auth.AuthClient;
 import io.whaledoc.auth.AuthSession;
 import io.whaledoc.config.ConfigManager;
 import io.whaledoc.config.WhaleDocConfig;
+import io.whaledoc.console.Console;
+import io.whaledoc.console.Spinner;
 import io.whaledoc.exceptions.ApiException;
 import io.whaledoc.utility.BrowserLauncher;
-import io.whaledoc.utility.Spinner;
 import lombok.extern.slf4j.Slf4j;
 import picocli.CommandLine.Command;
 
-import java.io.IOException;
-import java.io.InputStream;
 import java.net.URI;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
@@ -29,13 +28,13 @@ public class LoginCommand implements Callable<Integer> {
     private final ConfigManager configManager;
     private final AuthClient authClient;
     private final BrowserLauncher browserLauncher;
-    private final InputStream input;
+    private final Console console;
 
-    public LoginCommand(ConfigManager configManager, AuthClient authClient, BrowserLauncher browserLauncher, InputStream input) {
+    public LoginCommand(ConfigManager configManager, AuthClient authClient, BrowserLauncher browserLauncher, Console console) {
         this.configManager = configManager;
         this.authClient = authClient;
         this.browserLauncher = browserLauncher;
-        this.input = input;
+        this.console = console;
     }
 
     @Override
@@ -57,22 +56,25 @@ public class LoginCommand implements Callable<Integer> {
                             .build()
             );
 
-            System.out.println("> Authenticated");
+            console.success("Logged in");
             return 0;
 
         } catch (ApiException e) {
             log.error("Login failed", e);
-            System.out.println("! Login failed: " + e.getMessage());
+            console.error("Login failed: " + e.getMessage());
             return 1;
         }
     }
 
-    private static void printInstructions(AuthSession session) {
+    // The code is shown in the browser too; comparing them protects against approving someone else's login
+    private void printInstructions(AuthSession session) {
 
-        System.out.println("Your authentication code is: %s".formatted(session.authCode()));
-        System.out.println("This authentication code verifies your authentication with WhaleDoc.");
-        System.out.println("Press Enter to open the browser or visit: %s".formatted(session.authorizationUrl()));
-        System.out.println("\n(^C to quit)");
+        console.println("Your authentication code is: " + console.bold(console.brand(session.authCode())));
+        console.println(console.dim("Check that your browser shows the same code before you approve the login."));
+        console.println();
+        console.println("Press " + console.bold("Enter") + " to open the browser, or visit:");
+        console.println(console.cyan(session.authorizationUrl().toString()));
+        console.println();
     }
 
     // Waits for Enter in the background, so a login approved through the printed URL finishes without it
@@ -80,24 +82,15 @@ public class LoginCommand implements Callable<Integer> {
 
         Thread.ofVirtual().start(() -> {
 
-            if (waitForEnter() && !accessToken.isDone() && !browserLauncher.open(authorizationUrl)) {
-                System.out.println("! Unable to open a browser. Please visit: " + authorizationUrl);
+            if (console.waitForEnter() && !accessToken.isDone() && !browserLauncher.open(authorizationUrl)) {
+                console.warning("Unable to open a browser. Please visit the URL above.");
             }
         });
     }
 
-    private boolean waitForEnter() {
+    private String awaitAccessToken(CompletableFuture<String> accessToken) {
 
-        try {
-            return input.read() != -1;
-        } catch (IOException e) {
-            return false;
-        }
-    }
-
-    private static String awaitAccessToken(CompletableFuture<String> accessToken) {
-
-        Spinner spinner = new Spinner("Awaiting authentication...");
+        Spinner spinner = console.spinner("Waiting for you to approve the login... " + console.dim("(^C to quit)"));
         spinner.start();
 
         try {

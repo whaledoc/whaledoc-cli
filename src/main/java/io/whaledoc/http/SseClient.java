@@ -88,6 +88,7 @@ public final class SseClient {
 
                 validateResponse(response);
                 connection.setInputStream(response.body());
+                connection.markConnected();
 
                 // Connected: a later reconnect starts from the beginning of the backoff sequence
                 failedAttempts = 0;
@@ -117,7 +118,7 @@ public final class SseClient {
             }
 
             if (++failedAttempts >= MAX_RECONNECT_ATTEMPTS) {
-                throw new ApiException("Unable to reconnect to WhaleDoc after %d attempts.".formatted(MAX_RECONNECT_ATTEMPTS), lastError);
+                throw new ApiException("Unable to connect to WhaleDoc after %d attempts.".formatted(MAX_RECONNECT_ATTEMPTS), lastError);
             }
 
             if (!sleep(reconnectDelay)) {

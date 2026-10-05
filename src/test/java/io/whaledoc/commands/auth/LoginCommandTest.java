@@ -4,6 +4,7 @@ import io.whaledoc.auth.AuthClient;
 import io.whaledoc.auth.AuthSession;
 import io.whaledoc.config.ConfigManager;
 import io.whaledoc.config.WhaleDocConfig;
+import io.whaledoc.console.TestConsole;
 import io.whaledoc.exceptions.ApiException;
 import io.whaledoc.utility.BrowserLauncher;
 import org.junit.jupiter.api.Test;
@@ -12,10 +13,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.io.ByteArrayInputStream;
-import java.io.InputStream;
 import java.net.URI;
-import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CompletableFuture;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -40,6 +38,8 @@ class LoginCommandTest {
 
     @Mock
     private BrowserLauncher browserLauncher;
+
+    private TestConsole testConsole;
 
     @Test
     void shouldSaveAccessTokenWhenLoginIsApproved() {
@@ -88,6 +88,7 @@ class LoginCommandTest {
 
         // then
         assertThat(exitCode).isEqualTo(1);
+        assertThat(testConsole.errors()).contains("Login failed: API request failed with status 404: Unknown session");
         then(configManager).should(never()).saveToFile(any());
     }
 
@@ -124,8 +125,8 @@ class LoginCommandTest {
 
     private LoginCommand createLoginCommand(String userInput) {
 
-        InputStream input = new ByteArrayInputStream(userInput.getBytes(StandardCharsets.UTF_8));
-        return new LoginCommand(configManager, authClient, browserLauncher, input);
+        testConsole = TestConsole.withInput(userInput);
+        return new LoginCommand(configManager, authClient, browserLauncher, testConsole.console());
     }
 
     private WhaleDocConfig createConfig(String accessToken) {

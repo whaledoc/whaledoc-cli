@@ -94,6 +94,19 @@ class SseClientTest {
     }
 
     @Test
+    void shouldReportConnectedWhenStreamOpens(WireMockRuntimeInfo wireMock) {
+
+        // given
+        givenServerStreams("/events", EVENT_STREAM);
+
+        // when
+        connection = sseClient.connect(URI.create(wireMock.getHttpBaseUrl() + "/events"), event -> { });
+
+        // then
+        assertThat(connection.connected()).succeedsWithin(TIMEOUT);
+    }
+
+    @Test
     void shouldFailConnectionWhenServerRejectsAccessToken(WireMockRuntimeInfo wireMock) {
 
         // given

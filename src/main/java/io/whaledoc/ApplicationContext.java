@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.json.JsonMapper;
 import io.whaledoc.auth.AuthClient;
 import io.whaledoc.config.ApplicationConfig;
 import io.whaledoc.config.ConfigManager;
+import io.whaledoc.console.Console;
 import io.whaledoc.http.ApiClient;
 import io.whaledoc.http.SseClient;
 import io.whaledoc.update.UpdateService;
@@ -16,10 +17,11 @@ import java.time.Duration;
 
 /**
  * The objects the commands share during one run of the CLI, created once at startup:
- * a single HTTP client, a single JSON mapper and the clients built on top of them.
+ * the terminal console, a single HTTP client, a single JSON mapper and the clients built on top of them.
  */
 public record ApplicationContext(
         ApplicationConfig config,
+        Console console,
         ConfigManager configManager,
         AuthClient authClient,
         WebhookClient webhookClient,
@@ -39,6 +41,7 @@ public record ApplicationContext(
 
         return new ApplicationContext(
                 config,
+                Console.system(),
                 ConfigManager.forCurrentUser(objectMapper),
                 new AuthClient(apiClient, sseClient, objectMapper),
                 new WebhookClient(apiClient, sseClient, httpClient),

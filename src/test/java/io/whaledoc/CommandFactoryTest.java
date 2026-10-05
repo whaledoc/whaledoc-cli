@@ -3,6 +3,7 @@ package io.whaledoc;
 import io.whaledoc.auth.AuthClient;
 import io.whaledoc.config.ApplicationConfig;
 import io.whaledoc.config.ConfigManager;
+import io.whaledoc.console.TestConsole;
 import io.whaledoc.update.UpdateService;
 import io.whaledoc.webhook.WebhookClient;
 import org.junit.jupiter.api.Test;
@@ -63,6 +64,7 @@ class CommandFactoryTest {
 
         ApplicationContext context = new ApplicationContext(
                 new ApplicationConfig("https://api.example.com", "https://releases.example.com", "1.2.3"),
+                TestConsole.plain().console(),
                 configManager,
                 authClient,
                 webhookClient,

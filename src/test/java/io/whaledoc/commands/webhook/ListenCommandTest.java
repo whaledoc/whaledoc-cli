@@ -2,6 +2,7 @@ package io.whaledoc.commands.webhook;
 
 import io.whaledoc.config.ConfigManager;
 import io.whaledoc.config.WhaleDocConfig;
+import io.whaledoc.console.TestConsole;
 import io.whaledoc.exceptions.ApiException;
 import io.whaledoc.exceptions.ForwardException;
 import io.whaledoc.http.SseConnection;
@@ -18,6 +19,7 @@ import picocli.CommandLine;
 
 import java.net.URI;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -48,11 +50,13 @@ class ListenCommandTest {
     @Captor
     private ArgumentCaptor<Consumer<SseEvent>> eventConsumer;
 
+    private final TestConsole testConsole = TestConsole.plain();
+
     private CommandLine commandLine;
 
     @BeforeEach
     void setUp() {
-        commandLine = new CommandLine(new ListenCommand(configManager, webhookClient));
+        commandLine = new CommandLine(new ListenCommand(configManager, webhookClient, testConsole.console()));
     }
 
     @Test
@@ -66,6 +70,7 @@ class ListenCommandTest {
 
         // then
         assertThat(exitCode).isEqualTo(1);
+        assertThat(testConsole.errors()).isEqualToIgnoringNewLines("x You're not logged in. Run whaledoc login first.");
         then(webhookClient).shouldHaveNoInteractions();
     }
 
@@ -139,6 +144,36 @@ class ListenCommandTest {
     }
 
     @Test
+    void shouldReturnErrorWithoutPrintingReadyWhenConnectionCannotBeOpened() {
+
+        // given
+        givenUserIsLoggedInAndConnecting();
+        given(connection.connected()).willReturn(CompletableFuture.failedFuture(new ApiException("Unable to connect to WhaleDoc after 10 attempts.")));
+
+        // when
+        int exitCode = commandLine.execute();
+
+        // then
+        assertThat(exitCode).isEqualTo(1);
+        assertThat(testConsole.output()).doesNotContain("Ready!");
+        assertThat(testConsole.errors()).contains("Unable to connect to WhaleDoc after 10 attempts.");
+    }
+
+    @Test
+    void shouldPrintResponseStatusWhenEventIsForwarded() {
+
+        // given
+        Consumer<SseEvent> handleEvent = givenListeningWithForwardUrl(FORWARD_URL);
+        given(webhookClient.forward(URI.create(FORWARD_URL), EVENT)).willReturn(200);
+
+        // when
+        handleEvent.accept(EVENT);
+
+        // then
+        assertThat(testConsole.output()).containsPattern("-> document\\.created +\\[200]");
+    }
+
+    @Test
     void shouldKeepListeningWhenForwardingEventFails() {
 
         // given
@@ -177,6 +212,12 @@ class ListenCommandTest {
     }
 
     private void givenUserIsLoggedInAndListening() {
+
+        givenUserIsLoggedInAndConnecting();
+        given(connection.connected()).willReturn(CompletableFuture.completedFuture(null));
+    }
+
+    private void givenUserIsLoggedInAndConnecting() {
 
         given(configManager.load()).willReturn(createConfig(ACCESS_TOKEN));
         given(webhookClient.listen(eq(ACCESS_TOKEN), anySet(), any())).willReturn(connection);
