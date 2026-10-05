@@ -2,6 +2,7 @@ package io.whaledoc.commands.webhook;
 
 import io.whaledoc.config.ConfigManager;
 import io.whaledoc.config.WhaleDocConfig;
+import io.whaledoc.exceptions.ApiException;
 import io.whaledoc.http.SseConnection;
 import io.whaledoc.http.SseEvent;
 import io.whaledoc.webhook.WebhookClient;
@@ -23,6 +24,7 @@ import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.BDDMockito.willThrow;
 
 @ExtendWith(MockitoExtension.class)
 class ListenCommandTest {
@@ -50,7 +52,7 @@ class ListenCommandTest {
     }
 
     @Test
-    void shouldNotListenWhenUserIsNotLoggedIn() {
+    void shouldReturnErrorWithoutListeningWhenUserIsNotLoggedIn() {
 
         // given
         given(configManager.load()).willReturn(createConfig(null));
@@ -59,8 +61,22 @@ class ListenCommandTest {
         int exitCode = commandLine.execute();
 
         // then
-        assertThat(exitCode).isZero();
+        assertThat(exitCode).isEqualTo(1);
         then(webhookClient).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void shouldReturnErrorWhenConnectionIsRejected() throws InterruptedException {
+
+        // given
+        givenUserIsLoggedInAndListening();
+        willThrow(new ApiException(401, "Unauthorized")).given(connection).awaitCompletion();
+
+        // when
+        int exitCode = commandLine.execute();
+
+        // then
+        assertThat(exitCode).isEqualTo(1);
     }
 
     @Test

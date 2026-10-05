@@ -1,15 +1,22 @@
 package io.whaledoc.http;
 
+import io.whaledoc.exceptions.ApiException;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Objects;
-import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+/**
+ * An open event stream. It ends either when it is closed, or when the stream can't be kept open,
+ * for example because the access token was rejected or reconnecting kept failing.
+ */
 public final class SseConnection implements AutoCloseable {
 
     private final AtomicBoolean closed = new AtomicBoolean(false);
-    private final CountDownLatch completion = new CountDownLatch(1);
+    private final CompletableFuture<Void> completion = new CompletableFuture<>();
 
     private volatile InputStream inputStream;
     private volatile Thread readerThread;
@@ -22,12 +29,41 @@ public final class SseConnection implements AutoCloseable {
         this.readerThread = Objects.requireNonNull(readerThread);
     }
 
-    void complete() {
-        completion.countDown();
+    void fail(ApiException error) {
+
+        if (closed.compareAndSet(false, true)) {
+            closeInputStream();
+        }
+
+        completion.completeExceptionally(error);
     }
 
+    /**
+     * Completes normally when the connection is closed, or exceptionally with an {@link ApiException}
+     * when the stream ended because of an error.
+     */
+    public CompletableFuture<Void> completion() {
+        return completion.copy();
+    }
+
+    /**
+     * Waits until the connection ends.
+     *
+     * @throws ApiException when the stream ended because of an error
+     */
     public void awaitCompletion() throws InterruptedException {
-        completion.await();
+
+        try {
+            completion.get();
+
+        } catch (ExecutionException e) {
+
+            if (e.getCause() instanceof ApiException apiException) {
+                throw apiException;
+            }
+
+            throw new ApiException("The event stream failed.", e.getCause());
+        }
     }
 
     public boolean isOpen() {
@@ -36,16 +72,18 @@ public final class SseConnection implements AutoCloseable {
 
     @Override
     public void close() {
+
         if (!closed.compareAndSet(false, true)) {
             return;
         }
 
         closeInputStream();
         interruptReaderThread();
-        completion.countDown();
+        completion.complete(null);
     }
 
     private void closeInputStream() {
+
         InputStream input = inputStream;
 
         if (input == null) {
@@ -60,6 +98,7 @@ public final class SseConnection implements AutoCloseable {
     }
 
     private void interruptReaderThread() {
+
         Thread thread = readerThread;
 
         if (thread != null) {

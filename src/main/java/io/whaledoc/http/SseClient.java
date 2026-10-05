@@ -1,21 +1,26 @@
 package io.whaledoc.http;
 
 import io.whaledoc.exceptions.ApiException;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 
-import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.concurrent.ThreadFactory;
 import java.util.function.Consumer;
 
+/**
+ * Connects to server-sent event streams and keeps them open, reconnecting with backoff when
+ * the connection drops. Each stream is read on its own virtual thread.
+ */
+@Slf4j
 public final class SseClient {
 
     private static final String SSE_MEDIA_TYPE = "text/event-stream";
@@ -34,10 +39,7 @@ public final class SseClient {
                 .factory();
     }
 
-    public SseConnection connect(
-            URI uri,
-            Consumer<SseEvent> eventConsumer
-    ) {
+    public SseConnection connect(URI uri, Consumer<SseEvent> eventConsumer) {
         return connect(uri, null, eventConsumer);
     }
 
@@ -46,250 +48,155 @@ public final class SseClient {
         Objects.requireNonNull(uri, "uri must not be null");
         Objects.requireNonNull(eventConsumer, "eventConsumer must not be null");
 
-        HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
-                .uri(uri)
-                .header("Accept", SSE_MEDIA_TYPE)
-                .header("Cache-Control", "no-cache")
-                .header("X-API-Version", ApiConstants.API_VERSION);
-
-        if (StringUtils.isNotBlank(accessToken)) {
-            requestBuilder.header("Authorization", "Bearer " + accessToken);
-        }
-
-        HttpRequest request = requestBuilder
-                .GET()
-                .build();
-
+        HttpRequest.Builder request = newRequest(uri, accessToken);
         SseConnection connection = new SseConnection();
 
-        Thread readerThread = threadFactory.newThread(
-                () -> connectAndRead(request, connection, eventConsumer)
-        );
-
+        Thread readerThread = threadFactory.newThread(() -> run(request, connection, eventConsumer));
         connection.setReaderThread(readerThread);
         readerThread.start();
 
         return connection;
     }
 
-    private void connectAndRead(
-            HttpRequest request,
-            SseConnection connection,
-            Consumer<SseEvent> eventConsumer
-    ) {
+    private void run(HttpRequest.Builder request, SseConnection connection, Consumer<SseEvent> eventConsumer) {
 
+        try {
+            readUntilClosed(request, connection, eventConsumer);
+
+        } catch (ApiException e) {
+            connection.fail(e);
+
+        } catch (RuntimeException e) {
+            connection.fail(new ApiException("The event stream stopped unexpectedly.", e));
+        }
+    }
+
+    private void readUntilClosed(HttpRequest.Builder request, SseConnection connection, Consumer<SseEvent> eventConsumer) {
+
+        SseEventReader reader = new SseEventReader(event -> dispatch(event, eventConsumer));
         long reconnectDelay = INITIAL_RECONNECT_DELAY_MILLIS;
-        int reconnectAttempts = 0;
+        int failedAttempts = 0;
+        ApiException lastError = null;
 
         while (connection.isOpen()) {
 
             try {
-                HttpResponse<InputStream> response =
-                        httpClient.send(
-                                request,
-                                HttpResponse.BodyHandlers.ofInputStream()
-                        );
+                HttpResponse<InputStream> response = httpClient.send(
+                        resumeFrom(request, reader.lastEventId()),
+                        HttpResponse.BodyHandlers.ofInputStream()
+                );
 
                 validateResponse(response);
-
-                if (!connection.isOpen()) {
-                    response.body().close();
-                    return;
-                }
-
                 connection.setInputStream(response.body());
 
-                /*
-                 * The HTTP connection was successfully established.
-                 *
-                 * Reset the reconnect state. If the server later
-                 * closes the SSE stream, the next reconnect starts
-                 * from the beginning of the backoff sequence.
-                 */
-                reconnectAttempts = 0;
+                // Connected: a later reconnect starts from the beginning of the backoff sequence
+                failedAttempts = 0;
                 reconnectDelay = INITIAL_RECONNECT_DELAY_MILLIS;
 
-                readEvents(response.body(), connection, eventConsumer);
-
-                /*
-                 * The server closed the SSE stream.
-                 * Reconnect while the connection is still open.
-                 */
-                if (!connection.isOpen()) {
-                    return;
-                }
+                reader.read(response.body(), connection::isOpen);
 
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 return;
 
             } catch (ApiException e) {
-                if (!connection.isOpen()) {
-                    return;
+
+                if (!connection.isOpen() || !isRetryable(e)) {
+                    throw e;
                 }
 
-                /*
-                 * Authentication/authorization failures are not recoverable.
-                 */
-                if (e.statusCode() == 401 || e.statusCode() == 403) {
-                    return;
-                }
-
-                /*
-                 * Client-side errors are not recoverable.
-                 */
-                if (e.statusCode() < 500) {
-                    return;
-                }
+                lastError = e;
 
             } catch (IOException e) {
+
                 if (!connection.isOpen()) {
                     return;
                 }
+
+                lastError = new ApiException("Lost connection to WhaleDoc.", e);
             }
 
-            if (!connection.isOpen()) {
+            if (++failedAttempts >= MAX_RECONNECT_ATTEMPTS) {
+                throw new ApiException("Unable to reconnect to WhaleDoc after %d attempts.".formatted(MAX_RECONNECT_ATTEMPTS), lastError);
+            }
+
+            if (!sleep(reconnectDelay)) {
                 return;
             }
 
-            reconnectAttempts++;
-
-            if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-                return;
-            }
-
-            try {
-                Thread.sleep(reconnectDelay);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return;
-            }
-
-            reconnectDelay = Math.min(
-                    reconnectDelay * 2,
-                    MAX_RECONNECT_DELAY_MILLIS
-            );
+            reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY_MILLIS);
         }
     }
 
-    private void validateResponse(HttpResponse<InputStream> response) throws IOException {
+    // A failing handler must not end the stream; the next events should still arrive
+    private static void dispatch(SseEvent event, Consumer<SseEvent> eventConsumer) {
+
+        try {
+            eventConsumer.accept(event);
+        } catch (RuntimeException e) {
+            log.warn("Handling event {} failed", event.event(), e);
+        }
+    }
+
+    // Server errors and rate limiting are temporary; rejected tokens and other client errors are not
+    private static boolean isRetryable(ApiException e) {
+        return e.statusCode() >= 500 || e.statusCode() == 429;
+    }
+
+    private static boolean sleep(long millis) {
+
+        try {
+            Thread.sleep(millis);
+            return true;
+
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
+    }
+
+    private static HttpRequest.Builder newRequest(URI uri, String accessToken) {
+
+        HttpRequest.Builder request = HttpRequest.newBuilder(uri)
+                .header("Accept", SSE_MEDIA_TYPE)
+                .header("Cache-Control", "no-cache")
+                .header("X-API-Version", ApiConstants.API_VERSION);
+
+        if (StringUtils.isNotBlank(accessToken)) {
+            request.header("Authorization", "Bearer " + accessToken);
+        }
+
+        return request;
+    }
+
+    // Asks the server to continue after the last received event, so none are missed while reconnecting
+    private static HttpRequest resumeFrom(HttpRequest.Builder request, String lastEventId) {
+
+        HttpRequest.Builder copy = request.copy();
+
+        if (lastEventId != null) {
+            copy.header("Last-Event-ID", lastEventId);
+        }
+
+        return copy.GET().build();
+    }
+
+    private static void validateResponse(HttpResponse<InputStream> response) throws IOException {
 
         int statusCode = response.statusCode();
 
         if (statusCode < 200 || statusCode >= 300) {
 
             try (InputStream body = response.body()) {
-
-                String responseBody = new String(
-                        body.readAllBytes(),
-                        StandardCharsets.UTF_8
-                );
-
-                throw new ApiException(statusCode, responseBody);
+                throw new ApiException(statusCode, new String(body.readAllBytes(), StandardCharsets.UTF_8));
             }
         }
 
-        String contentType = response.headers()
-                .firstValue("Content-Type")
-                .orElse("");
+        String contentType = response.headers().firstValue("Content-Type").orElse("");
 
-        if (!contentType
-                .toLowerCase()
-                .startsWith(SSE_MEDIA_TYPE)) {
-
+        if (!contentType.toLowerCase(Locale.ROOT).startsWith(SSE_MEDIA_TYPE)) {
             response.body().close();
-
             throw new ApiException("Invalid SSE response Content-Type: " + contentType);
         }
-    }
-
-    private void readEvents(
-            InputStream inputStream,
-            SseConnection connection,
-            Consumer<SseEvent> eventConsumer
-    ) throws IOException {
-
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(inputStream, StandardCharsets.UTF_8)
-        )) {
-
-            String event = null;
-            String id = null;
-            StringBuilder data = new StringBuilder();
-
-            String line;
-
-            while (connection.isOpen()
-                   && (line = reader.readLine()) != null) {
-
-                /*
-                 * An empty line terminates an SSE event.
-                 */
-                if (line.isEmpty()) {
-
-                    if (data.length() > 0) {
-                        eventConsumer.accept(
-                                new SseEvent(
-                                        event,
-                                        data.toString(),
-                                        id
-                                )
-                        );
-                    }
-
-                    event = null;
-                    id = null;
-                    data.setLength(0);
-
-                    continue;
-                }
-
-                /*
-                 * SSE comments are commonly used as
-                 * heartbeat/keep-alive messages.
-                 *
-                 * Example:
-                 *
-                 * : keep-alive
-                 */
-                if (line.startsWith(":")) {
-                    continue;
-                }
-
-                if (line.startsWith("event:")) {
-                    event = parseFieldValue(line);
-                } else if (line.startsWith("data:")) {
-                    if (data.length() > 0) {
-                        data.append('\n');
-                    }
-
-                    data.append(parseFieldValue(line));
-                } else if (line.startsWith("id:")) {
-                    id = parseFieldValue(line);
-                }
-
-                /*
-                 * retry: is deliberately not handled here.
-                 *
-                 * Reconnection uses the client's own backoff policy.
-                 */
-            }
-        }
-    }
-
-    private String parseFieldValue(String line) {
-        int separator = line.indexOf(':');
-
-        if (separator == -1) {
-            return "";
-        }
-
-        String value = line.substring(separator + 1);
-
-        if (value.startsWith(" ")) {
-            value = value.substring(1);
-        }
-
-        return value;
     }
 }

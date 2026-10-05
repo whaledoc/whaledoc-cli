@@ -1,11 +1,13 @@
 package io.whaledoc.commands.webhook;
 
-import io.whaledoc.http.SseConnection;
-import io.whaledoc.http.SseEvent;
 import io.whaledoc.config.ConfigManager;
 import io.whaledoc.config.WhaleDocConfig;
+import io.whaledoc.exceptions.ApiException;
+import io.whaledoc.http.SseConnection;
+import io.whaledoc.http.SseEvent;
 import io.whaledoc.webhook.WebhookClient;
 import io.whaledoc.webhook.WebhookEvents;
+import lombok.extern.slf4j.Slf4j;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
@@ -14,6 +16,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.Set;
+import java.util.concurrent.Callable;
 import java.util.stream.Collectors;
 
 @Command(
@@ -40,7 +43,8 @@ import java.util.stream.Collectors;
                 "whaledoc listen [flags]"
         }
 )
-public class ListenCommand implements Runnable {
+@Slf4j
+public class ListenCommand implements Callable<Integer> {
 
     private static final DateTimeFormatter TIMESTAMP_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
@@ -69,12 +73,13 @@ public class ListenCommand implements Runnable {
     }
 
     @Override
-    public void run() {
+    public Integer call() {
+
         WhaleDocConfig config = configManager.load();
 
         if (config.accessToken() == null || config.accessToken().isBlank()) {
             System.out.println("You are not logged in. Run 'whaledoc login' first.");
-            return;
+            return 1;
         }
 
         Set<String> eventFilter = resolveEvents();
@@ -96,10 +101,27 @@ public class ListenCommand implements Runnable {
 
         try {
             connection.awaitCompletion();
+            return 0;
+
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             connection.close();
+            return 0;
+
+        } catch (ApiException e) {
+            log.error("Stopped listening for webhook events", e);
+            System.out.println("! " + describeFailure(e));
+            return 1;
         }
+    }
+
+    private static String describeFailure(ApiException e) {
+
+        if (e.statusCode() == 401 || e.statusCode() == 403) {
+            return "Your login is no longer valid. Run 'whaledoc login' and try again.";
+        }
+
+        return "Stopped listening: " + e.getMessage();
     }
 
     private Set<String> resolveEvents() {
