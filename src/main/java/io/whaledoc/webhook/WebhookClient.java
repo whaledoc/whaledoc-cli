@@ -1,6 +1,5 @@
 package io.whaledoc.webhook;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.whaledoc.http.ApiClient;
 import io.whaledoc.http.ApiConstants;
 import io.whaledoc.http.SseClient;
@@ -21,10 +20,6 @@ public final class WebhookClient {
     private final ApiClient apiClient;
     private final SseClient sseClient;
     private final HttpClient httpClient;
-
-    public WebhookClient() {
-        this(new ApiClient(new ObjectMapper()), new SseClient(), HttpClient.newHttpClient());
-    }
 
     public WebhookClient(ApiClient apiClient, SseClient sseClient, HttpClient httpClient) {
         this.apiClient = apiClient;

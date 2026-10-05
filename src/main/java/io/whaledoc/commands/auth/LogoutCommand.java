@@ -21,10 +21,6 @@ public class LogoutCommand implements Callable<Integer> {
     private final ConfigManager configManager;
     private final AuthClient authClient;
 
-    public LogoutCommand() {
-        this(new ConfigManager(), new AuthClient());
-    }
-
     public LogoutCommand(ConfigManager configManager, AuthClient authClient) {
         this.configManager = configManager;
         this.authClient = authClient;

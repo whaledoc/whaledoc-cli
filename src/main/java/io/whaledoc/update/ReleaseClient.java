@@ -24,19 +24,9 @@ public final class ReleaseClient {
     private static final String VERSION_FILE = "version.txt";
     private static final Duration TIMEOUT = Duration.ofSeconds(30);
 
+    // Must follow redirects: GitHub redirects release downloads to its file storage
     private final HttpClient httpClient;
     private final String releasesUrl;
-
-    public ReleaseClient(String releasesUrl) {
-
-        this(
-                HttpClient.newBuilder()
-                        .followRedirects(HttpClient.Redirect.NORMAL)
-                        .connectTimeout(TIMEOUT)
-                        .build(),
-                releasesUrl
-        );
-    }
 
     public Version fetchLatestVersion() {
 

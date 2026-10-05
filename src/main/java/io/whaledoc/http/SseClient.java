@@ -26,9 +26,9 @@ public final class SseClient {
     private final HttpClient httpClient;
     private final ThreadFactory threadFactory;
 
-    public SseClient() {
+    public SseClient(HttpClient httpClient) {
 
-        this.httpClient = HttpClient.newHttpClient();
+        this.httpClient = httpClient;
         this.threadFactory = Thread.ofVirtual()
                 .name("whaledoc-sse-", 0)
                 .factory();

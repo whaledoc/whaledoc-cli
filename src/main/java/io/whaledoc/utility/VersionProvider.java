@@ -1,18 +1,19 @@
 package io.whaledoc.utility;
 
-import io.whaledoc.config.ApplicationConfig;
+import lombok.RequiredArgsConstructor;
 import picocli.CommandLine;
 
+@RequiredArgsConstructor
 public class VersionProvider implements CommandLine.IVersionProvider {
+
+    // Comes from the build-time filtered application.yml: a native image has no JAR manifest
+    private final String version;
 
     @Override
     public String[] getVersion() {
-        // Read from the build-time filtered application.yml: a native image has no JAR manifest
-        String version = new ApplicationConfig().getVersion();
 
         return new String[]{
                 "WhaleDoc version " + version
         };
     }
 }
-

@@ -6,6 +6,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import java.net.URI;
+import java.net.http.HttpClient;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
@@ -30,7 +31,7 @@ class SseClientTest {
 
             """;
 
-    private final SseClient sseClient = new SseClient();
+    private final SseClient sseClient = new SseClient(HttpClient.newHttpClient());
     private final CompletableFuture<SseEvent> receivedEvent = new CompletableFuture<>();
 
     private SseConnection connection;

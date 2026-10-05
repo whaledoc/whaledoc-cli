@@ -10,6 +10,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.net.URI;
+import java.net.http.HttpClient;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.any;
@@ -38,8 +39,9 @@ class AuthClientTest {
     void setUp(WireMockRuntimeInfo wireMock) {
 
         ObjectMapper objectMapper = new ObjectMapper();
-        ApiClient apiClient = new ApiClient(objectMapper, wireMock.getHttpBaseUrl());
-        authClient = new AuthClient(apiClient, new SseClient(), objectMapper);
+        HttpClient httpClient = HttpClient.newHttpClient();
+        ApiClient apiClient = new ApiClient(httpClient, objectMapper, wireMock.getHttpBaseUrl());
+        authClient = new AuthClient(apiClient, new SseClient(httpClient), objectMapper);
     }
 
     @Test

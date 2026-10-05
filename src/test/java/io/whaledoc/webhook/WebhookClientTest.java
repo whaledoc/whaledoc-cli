@@ -46,8 +46,9 @@ class WebhookClientTest {
     void setUp(WireMockRuntimeInfo wireMock) {
 
         baseUrl = wireMock.getHttpBaseUrl();
-        ApiClient apiClient = new ApiClient(new ObjectMapper(), baseUrl);
-        webhookClient = new WebhookClient(apiClient, new SseClient(), HttpClient.newHttpClient());
+        HttpClient httpClient = HttpClient.newHttpClient();
+        ApiClient apiClient = new ApiClient(httpClient, new ObjectMapper(), baseUrl);
+        webhookClient = new WebhookClient(apiClient, new SseClient(httpClient), httpClient);
     }
 
     @AfterEach

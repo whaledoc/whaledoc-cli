@@ -24,9 +24,13 @@ import java.util.concurrent.CompletableFuture;
 )
 public class LoginCommand implements Callable<Integer> {
 
-    private final ConfigManager configManager = new ConfigManager();
+    private final ConfigManager configManager;
+    private final AuthClient authClient;
 
-    private final AuthClient authClient = new AuthClient();
+    public LoginCommand(ConfigManager configManager, AuthClient authClient) {
+        this.configManager = configManager;
+        this.authClient = authClient;
+    }
 
     @Override
     public Integer call() {

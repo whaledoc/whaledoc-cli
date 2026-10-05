@@ -236,24 +236,6 @@
       ]
     },
     {
-      "type": "io.whaledoc.commands.auth.LoginCommand",
-      "methods": [
-        {
-          "name": "<init>",
-          "parameterTypes": []
-        }
-      ]
-    },
-    {
-      "type": "io.whaledoc.commands.auth.LogoutCommand",
-      "methods": [
-        {
-          "name": "<init>",
-          "parameterTypes": []
-        }
-      ]
-    },
-    {
       "type": "io.whaledoc.commands.webhook.ListenCommand",
       "fields": [
         {
@@ -261,21 +243,6 @@
         },
         {
           "name": "forwardTo"
-        }
-      ],
-      "methods": [
-        {
-          "name": "<init>",
-          "parameterTypes": []
-        }
-      ]
-    },
-    {
-      "type": "io.whaledoc.utility.VersionProvider",
-      "methods": [
-        {
-          "name": "<init>",
-          "parameterTypes": []
         }
       ]
     },

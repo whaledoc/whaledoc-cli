@@ -6,6 +6,7 @@ import io.whaledoc.exceptions.UpdateException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.net.http.HttpClient;
 import java.nio.file.Path;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
@@ -89,6 +90,8 @@ class ReleaseClientTest {
     }
 
     private ReleaseClient createReleaseClient(WireMockRuntimeInfo wireMock) {
-        return new ReleaseClient(wireMock.getHttpBaseUrl() + "/releases");
+
+        HttpClient httpClient = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NORMAL).build();
+        return new ReleaseClient(httpClient, wireMock.getHttpBaseUrl() + "/releases");
     }
 }

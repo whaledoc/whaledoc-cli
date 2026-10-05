@@ -23,14 +23,6 @@ public final class AuthClient {
     private final SseClient sseClient;
     private final ObjectMapper objectMapper;
 
-    public AuthClient() {
-        this(new ObjectMapper());
-    }
-
-    private AuthClient(ObjectMapper objectMapper) {
-        this(new ApiClient(objectMapper), new SseClient(), objectMapper);
-    }
-
     public AuthClient(ApiClient apiClient, SseClient sseClient, ObjectMapper objectMapper) {
 
         this.apiClient = apiClient;

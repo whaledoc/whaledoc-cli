@@ -6,6 +6,8 @@ import com.github.tomakehurst.wiremock.junit5.WireMockTest;
 import io.whaledoc.exceptions.ApiException;
 import org.junit.jupiter.api.Test;
 
+import java.net.http.HttpClient;
+
 import static com.github.tomakehurst.wiremock.client.WireMock.any;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalToJson;
@@ -90,7 +92,7 @@ class ApiClientTest {
     }
 
     private ApiClient createApiClient(WireMockRuntimeInfo wireMock) {
-        return new ApiClient(new ObjectMapper(), wireMock.getHttpBaseUrl());
+        return new ApiClient(HttpClient.newHttpClient(), new ObjectMapper(), wireMock.getHttpBaseUrl());
     }
 
     private record DocumentRequest(String name) {

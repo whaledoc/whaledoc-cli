@@ -1,5 +1,6 @@
 package io.whaledoc.config;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.whaledoc.exceptions.ConfigException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -23,7 +24,7 @@ class ConfigManagerTest {
     @BeforeEach
     void setUp() {
         configDirectory = tempDir.resolve("whaledoc");
-        configManager = new ConfigManager(configDirectory);
+        configManager = new ConfigManager(new ObjectMapper(), configDirectory);
     }
 
     @Test
@@ -48,7 +49,7 @@ class ConfigManagerTest {
         WhaleDocConfig expectedConfig = configManager.load();
 
         // when
-        WhaleDocConfig actualConfig = new ConfigManager(configDirectory).load();
+        WhaleDocConfig actualConfig = new ConfigManager(new ObjectMapper(), configDirectory).load();
 
         // then
         assertThat(actualConfig).usingRecursiveComparison().isEqualTo(expectedConfig);

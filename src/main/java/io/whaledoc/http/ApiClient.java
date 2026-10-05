@@ -2,7 +2,6 @@ package io.whaledoc.http;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.whaledoc.exceptions.ApiException;
-import io.whaledoc.config.ApplicationConfig;
 
 import java.io.IOException;
 import java.net.URI;
@@ -16,12 +15,8 @@ public final class ApiClient {
     private final ObjectMapper objectMapper;
     private final String baseUrl;
 
-    public ApiClient(ObjectMapper objectMapper) {
-        this(objectMapper, new ApplicationConfig().getApiUrl());
-    }
-
-    public ApiClient(ObjectMapper objectMapper, String baseUrl) {
-        this.httpClient = HttpClient.newHttpClient();
+    public ApiClient(HttpClient httpClient, ObjectMapper objectMapper, String baseUrl) {
+        this.httpClient = httpClient;
         this.objectMapper = objectMapper;
         this.baseUrl = baseUrl;
     }

@@ -20,15 +20,15 @@ public final class ConfigManager {
     private final Path configDirectory;
     private final Path configFile;
 
-    public ConfigManager() {
-        this(resolveConfigDirectory());
-    }
+    public ConfigManager(ObjectMapper objectMapper, Path configDirectory) {
 
-    public ConfigManager(Path configDirectory) {
-
-        this.objectMapper = new ObjectMapper();
+        this.objectMapper = objectMapper;
         this.configDirectory = configDirectory;
         this.configFile = configDirectory.resolve(CONFIG_FILE_NAME);
+    }
+
+    public static ConfigManager forCurrentUser(ObjectMapper objectMapper) {
+        return new ConfigManager(objectMapper, resolveConfigDirectory());
     }
 
     public WhaleDocConfig load() {

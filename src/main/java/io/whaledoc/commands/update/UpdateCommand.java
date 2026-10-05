@@ -1,6 +1,5 @@
 package io.whaledoc.commands.update;
 
-import io.whaledoc.config.ApplicationConfig;
 import io.whaledoc.exceptions.UpdateException;
 import io.whaledoc.update.CurrentExecutable;
 import io.whaledoc.update.UpdateService;
@@ -26,6 +25,14 @@ public class UpdateCommand implements Callable<Integer> {
     )
     private boolean checkOnly;
 
+    private final UpdateService updateService;
+    private final Version currentVersion;
+
+    public UpdateCommand(UpdateService updateService, Version currentVersion) {
+        this.updateService = updateService;
+        this.currentVersion = currentVersion;
+    }
+
     @Override
     public Integer call() {
 
@@ -33,10 +40,6 @@ public class UpdateCommand implements Callable<Integer> {
             System.out.println("! 'whaledoc update' only works for an installed WhaleDoc CLI, not when running from a JAR.");
             return 1;
         }
-
-        ApplicationConfig config = new ApplicationConfig();
-        UpdateService updateService = UpdateService.create(config.getReleasesUrl());
-        Version currentVersion = Version.parse(config.getVersion());
 
         try {
             Version latestVersion = withSpinner("Checking for updates...", updateService::fetchLatestVersion);

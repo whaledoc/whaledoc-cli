@@ -63,10 +63,6 @@ public class ListenCommand implements Runnable {
     )
     private String forwardTo;
 
-    public ListenCommand() {
-        this(new ConfigManager(), new WebhookClient());
-    }
-
     public ListenCommand(ConfigManager configManager, WebhookClient webhookClient) {
         this.configManager = configManager;
         this.webhookClient = webhookClient;
