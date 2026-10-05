@@ -1,4 +1,6 @@
 whaledoc:
+  version: ${project.version}
+
   api:
     url: ${whaledoc.api.url}
 
