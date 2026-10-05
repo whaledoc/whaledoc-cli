@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.IOException;
+import java.net.http.HttpClient;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
@@ -24,12 +25,12 @@ public final class UpdateService {
     private final ExecutableReplacer executableReplacer;
     private final Platform platform;
 
-    public static UpdateService create(String releasesUrl) {
+    public static UpdateService create(HttpClient httpClient, String releasesUrl) {
 
         Platform platform = Platform.current();
 
         return new UpdateService(
-                new ReleaseClient(releasesUrl),
+                new ReleaseClient(httpClient, releasesUrl),
                 new ArchiveExtractor(platform),
                 new ExecutableReplacer(platform),
                 platform

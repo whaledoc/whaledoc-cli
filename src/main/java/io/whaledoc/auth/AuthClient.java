@@ -10,8 +10,8 @@ import java.net.URI;
 import java.time.Duration;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 public final class AuthClient {
 
@@ -22,14 +22,6 @@ public final class AuthClient {
     private final ApiClient apiClient;
     private final SseClient sseClient;
     private final ObjectMapper objectMapper;
-
-    public AuthClient() {
-        this(new ObjectMapper());
-    }
-
-    private AuthClient(ObjectMapper objectMapper) {
-        this(new ApiClient(objectMapper), new SseClient(), objectMapper);
-    }
 
     public AuthClient(ApiClient apiClient, SseClient sseClient, ObjectMapper objectMapper) {
 
@@ -48,7 +40,7 @@ public final class AuthClient {
                 new CreateAuthSessionRequest(cliId);
 
         CreateAuthSessionResponse response = apiClient.post(
-                ApiConstants.AUTH_LOGIN,
+                ApiConstants.AUTH_SESSIONS,
                 request,
                 CreateAuthSessionResponse.class
         );
@@ -56,33 +48,33 @@ public final class AuthClient {
         return new AuthSession(response.sessionId(), URI.create(response.authorizationUrl()), response.authCode);
     }
 
-    public String awaitAuthentication(AuthSession session) {
+    /**
+     * Waits for the user to approve the login in the browser, over a single event stream.
+     *
+     * @return the access token; fails with an {@link ApiException} when the stream fails, or with a
+     * {@link java.util.concurrent.TimeoutException} when the login isn't approved within 5 minutes
+     */
+    public CompletableFuture<String> waitForAuthentication(AuthSession session) {
 
         Objects.requireNonNull(session, "session must not be null");
 
-        URI eventsUri = URI.create(apiClient.baseUrl() + ApiConstants.AUTH_LOGIN_EVENT.formatted(session.sessionId()));
+        URI eventsUri = URI.create(apiClient.baseUrl() + ApiConstants.AUTH_SESSION_EVENTS.formatted(session.sessionId()));
+        CompletableFuture<String> accessToken = new CompletableFuture<>();
 
-        CompletableFuture<String> authentication = new CompletableFuture<>();
+        SseConnection connection = sseClient.connect(eventsUri, event -> handleEvent(event, accessToken));
 
-        SseConnection connection = sseClient.connect(eventsUri, event -> handleEvent(event, authentication));
+        // Fail right away when the stream ends before a token arrived, instead of waiting for the timeout
+        connection.completion().whenComplete((ignored, error) -> accessToken.completeExceptionally(
+                error != null ? unwrap(error) : new ApiException("The login was cancelled.")
+        ));
 
-        try {
-            return authentication.get(AUTHENTICATION_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+        return accessToken
+                .orTimeout(AUTHENTICATION_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS)
+                .whenComplete((token, error) -> connection.close());
+    }
 
-        } catch (TimeoutException e) {
-            throw new ApiException("Authentication timed out.", e);
-
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-
-            throw new ApiException("Authentication was interrupted.", e);
-
-        } catch (Exception e) {
-            throw new ApiException("Authentication failed.", e);
-
-        } finally {
-            connection.close();
-        }
+    private static Throwable unwrap(Throwable error) {
+        return error instanceof CompletionException && error.getCause() != null ? error.getCause() : error;
     }
 
     private void handleEvent(SseEvent event, CompletableFuture<String> authentication) {
@@ -119,7 +111,7 @@ public final class AuthClient {
             throw new IllegalArgumentException("accessToken must not be blank");
         }
 
-        apiClient.post(ApiConstants.AUTH_LOGOUT, accessToken);
+        apiClient.postAuthorized(ApiConstants.AUTH_LOGOUT, accessToken);
     }
 
     private record CreateAuthSessionRequest(String cliId) {

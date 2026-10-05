@@ -14,16 +14,13 @@ import java.util.concurrent.Callable;
 @Slf4j
 @Command(
         name = "logout",
-        description = "Logout of your WhaleDoc account"
+        mixinStandardHelpOptions = true,
+        description = "Log out of your WhaleDoc account."
 )
 public class LogoutCommand implements Callable<Integer> {
 
     private final ConfigManager configManager;
     private final AuthClient authClient;
-
-    public LogoutCommand() {
-        this(new ConfigManager(), new AuthClient());
-    }
 
     public LogoutCommand(ConfigManager configManager, AuthClient authClient) {
         this.configManager = configManager;

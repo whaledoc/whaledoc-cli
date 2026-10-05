@@ -4,23 +4,18 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import io.whaledoc.exceptions.ConfigException;
-import lombok.Getter;
 
 import java.io.IOException;
 import java.io.InputStream;
 
-@Getter
-public final class ApplicationConfig {
+/**
+ * Build-time settings from application.yml, which Maven fills in when the CLI is built.
+ */
+public record ApplicationConfig(String apiUrl, String releasesUrl, String version) {
 
     private static final String CONFIG_FILE = "application.yml";
 
-    private final String apiUrl;
-    private final String version;
-    private final String releasesUrl;
-
-    public ApplicationConfig() {
-
-        ObjectMapper objectMapper = new ObjectMapper(new YAMLFactory());
+    public static ApplicationConfig load() {
 
         try (InputStream inputStream = ApplicationConfig.class
                 .getClassLoader()
@@ -30,17 +25,16 @@ public final class ApplicationConfig {
                 throw new ConfigException("Unable to find " + CONFIG_FILE);
             }
 
-            JsonNode config = objectMapper.readTree(inputStream);
-            this.apiUrl = config.at("/whaledoc/api/url").asText();
-            this.version = config.at("/whaledoc/version").asText();
-            this.releasesUrl = config.at("/whaledoc/releases/url").asText();
+            JsonNode config = new ObjectMapper(new YAMLFactory()).readTree(inputStream);
+
+            return new ApplicationConfig(
+                    config.at("/whaledoc/api/url").asText(),
+                    config.at("/whaledoc/releases/url").asText(),
+                    config.at("/whaledoc/version").asText()
+            );
 
         } catch (IOException e) {
             throw new ConfigException("Unable to load application configuration.", e);
         }
-    }
-
-    public String apiUrl() {
-        return apiUrl;
     }
 }

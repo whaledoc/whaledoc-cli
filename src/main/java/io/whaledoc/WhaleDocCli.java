@@ -4,17 +4,13 @@ import io.whaledoc.commands.auth.LoginCommand;
 import io.whaledoc.commands.auth.LogoutCommand;
 import io.whaledoc.commands.update.UpdateCommand;
 import io.whaledoc.commands.webhook.ListenCommand;
-import io.whaledoc.config.ConfigManager;
 import io.whaledoc.update.UpdateService;
 import io.whaledoc.utility.VersionProvider;
-import io.whaledoc.config.WhaleDocConfig;
-import lombok.extern.slf4j.Slf4j;
 import picocli.CommandLine;
 import picocli.CommandLine.Model.CommandSpec;
 
 import static picocli.CommandLine.*;
 
-@Slf4j
 @Command(
         name = "whaledoc",
         subcommands = {
@@ -60,12 +56,7 @@ public class WhaleDocCli implements Runnable {
 
         UpdateService.cleanUpPreviousVersion();
 
-        ConfigManager configManager = new ConfigManager();
-        WhaleDocConfig config = configManager.load();
-
-        log.debug("Using CLI ID: {}", config.cliId());
-
-        CommandLine commandLine = new CommandLine(new WhaleDocCli());
+        CommandLine commandLine = new CommandLine(new WhaleDocCli(), new CommandFactory(ApplicationContext.create()));
 
         commandLine.setColorScheme(CommandLine.Help.defaultColorScheme(CommandLine.Help.Ansi.ON));
 

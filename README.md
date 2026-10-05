@@ -318,6 +318,8 @@ Run the complete test suite:
 
 ### Local API
 
+The endpoints the CLI calls, and what it expects from them, are described in [docs/cli-api.md](docs/cli-api.md).
+
 When developing against a local WhaleDoc API instance, build the CLI with the local API URL:
 
 ```sh

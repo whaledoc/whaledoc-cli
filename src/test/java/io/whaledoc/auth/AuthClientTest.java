@@ -10,14 +10,18 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.net.URI;
+import java.net.http.HttpClient;
+import java.time.Duration;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
-import static com.github.tomakehurst.wiremock.client.WireMock.any;
-import static com.github.tomakehurst.wiremock.client.WireMock.anyRequestedFor;
+import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalToJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.noContent;
+import static com.github.tomakehurst.wiremock.client.WireMock.notFound;
 import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.stubFor;
@@ -31,6 +35,7 @@ class AuthClientTest {
 
     private static final String CLI_ID = "cli-1";
     private static final String SESSION_ID = "session-1";
+    private static final Duration TIMEOUT = Duration.ofSeconds(5);
 
     private AuthClient authClient;
 
@@ -38,8 +43,9 @@ class AuthClientTest {
     void setUp(WireMockRuntimeInfo wireMock) {
 
         ObjectMapper objectMapper = new ObjectMapper();
-        ApiClient apiClient = new ApiClient(objectMapper, wireMock.getHttpBaseUrl());
-        authClient = new AuthClient(apiClient, new SseClient(), objectMapper);
+        HttpClient httpClient = HttpClient.newHttpClient();
+        ApiClient apiClient = new ApiClient(httpClient, objectMapper, wireMock.getHttpBaseUrl());
+        authClient = new AuthClient(apiClient, new SseClient(httpClient), objectMapper);
     }
 
     @Test
@@ -80,14 +86,14 @@ class AuthClientTest {
                 """);
 
         // when
-        String actualAccessToken = authClient.awaitAuthentication(createExpectedSession());
+        CompletableFuture<String> actualAccessToken = authClient.waitForAuthentication(createExpectedSession());
 
         // then
-        assertThat(actualAccessToken).isEqualTo("access-token");
+        assertThat(actualAccessToken).succeedsWithin(TIMEOUT).isEqualTo("access-token");
     }
 
     @Test
-    void shouldThrowApiExceptionWhenAuthenticationEventHasNoAccessToken() {
+    void shouldFailWithApiExceptionWhenAuthenticationEventHasNoAccessToken() {
 
         // given
         givenAuthenticationEventIsSent("""
@@ -95,32 +101,51 @@ class AuthClientTest {
                 """);
 
         // when
-        Throwable thrown = catchThrowable(() -> authClient.awaitAuthentication(createExpectedSession()));
+        CompletableFuture<String> actualAccessToken = authClient.waitForAuthentication(createExpectedSession());
 
         // then
-        assertThat(thrown)
+        assertThat(actualAccessToken)
+                .failsWithin(TIMEOUT)
+                .withThrowableOfType(ExecutionException.class)
+                .havingCause()
                 .isInstanceOf(ApiException.class)
-                .hasMessage("Authentication failed.")
-                .hasRootCauseMessage("Authentication event did not contain an access token.");
+                .withMessage("Authentication event did not contain an access token.");
+    }
+
+    @Test
+    void shouldFailRightAwayWhenLoginSessionIsUnknown() {
+
+        // given
+        stubFor(get(urlEqualTo("/cli/auth/sessions/" + SESSION_ID + "/events")).willReturn(notFound()));
+
+        // when
+        CompletableFuture<String> actualAccessToken = authClient.waitForAuthentication(createExpectedSession());
+
+        // then
+        assertThat(actualAccessToken)
+                .failsWithin(TIMEOUT)
+                .withThrowableOfType(ExecutionException.class)
+                .havingCause()
+                .isInstanceOfSatisfying(ApiException.class, exception -> assertThat(exception.statusCode()).isEqualTo(404));
     }
 
     @Test
     void shouldSendAccessTokenWhenLoggingOut() {
 
         // given
-        stubFor(any(urlEqualTo("/cli/auth/logout")).willReturn(noContent()));
+        stubFor(post(urlEqualTo("/cli/auth/logout")).willReturn(noContent()));
 
         // when
         authClient.logout("access-token");
 
         // then
-        verify(anyRequestedFor(urlEqualTo("/cli/auth/logout"))
+        verify(postRequestedFor(urlEqualTo("/cli/auth/logout"))
                 .withHeader("Authorization", equalTo("Bearer access-token")));
     }
 
     private void givenSessionCanBeCreated() {
 
-        stubFor(post(urlEqualTo("/cli/auth/login"))
+        stubFor(post(urlEqualTo("/cli/auth/sessions"))
                 .withRequestBody(equalToJson("""
                         { "cliId": "cli-1" }
                         """))
@@ -135,7 +160,7 @@ class AuthClientTest {
 
     private void givenAuthenticationEventIsSent(String data) {
 
-        stubFor(get(urlEqualTo("/cli/auth/login/" + SESSION_ID))
+        stubFor(get(urlEqualTo("/cli/auth/sessions/" + SESSION_ID + "/events"))
                 .willReturn(aResponse()
                         .withHeader("Content-Type", "text/event-stream")
                         .withBody("event: authenticated%ndata: %s%n%n".formatted(data.strip()))));

@@ -6,7 +6,3 @@ whaledoc:
 
   releases:
     url: ${whaledoc.releases.url}
-
-  endpoints:
-    cliAuthSessions: /cli/auth/sessions
-    cliWebhookEvents: /cli/webhooks/events

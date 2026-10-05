@@ -6,7 +6,8 @@ import com.github.tomakehurst.wiremock.junit5.WireMockTest;
 import io.whaledoc.exceptions.ApiException;
 import org.junit.jupiter.api.Test;
 
-import static com.github.tomakehurst.wiremock.client.WireMock.any;
+import java.net.http.HttpClient;
+
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalToJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.noContent;
@@ -55,14 +56,14 @@ class ApiClientTest {
     }
 
     @Test
-    void shouldSendBearerTokenWhenRequestHasAccessToken(WireMockRuntimeInfo wireMock) {
+    void shouldPostWithBearerTokenWhenRequestIsAuthorized(WireMockRuntimeInfo wireMock) {
 
         // given
         givenEndpointRequiresAccessToken("access-token");
         ApiClient apiClient = createApiClient(wireMock);
 
         // when
-        Throwable thrown = catchThrowable(() -> apiClient.post("/cli/auth/logout", "access-token"));
+        Throwable thrown = catchThrowable(() -> apiClient.postAuthorized("/cli/auth/logout", "access-token"));
 
         // then
         assertThat(thrown).isNull();
@@ -83,14 +84,14 @@ class ApiClientTest {
 
     private void givenEndpointRequiresAccessToken(String accessToken) {
 
-        stubFor(any(urlEqualTo("/cli/auth/logout"))
+        stubFor(post(urlEqualTo("/cli/auth/logout"))
                 .withHeader("Authorization", equalTo("Bearer " + accessToken))
                 .withHeader("X-API-Version", equalTo(ApiConstants.API_VERSION))
                 .willReturn(noContent()));
     }
 
     private ApiClient createApiClient(WireMockRuntimeInfo wireMock) {
-        return new ApiClient(new ObjectMapper(), wireMock.getHttpBaseUrl());
+        return new ApiClient(HttpClient.newHttpClient(), new ObjectMapper(), wireMock.getHttpBaseUrl());
     }
 
     private record DocumentRequest(String name) {

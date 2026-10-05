@@ -1,6 +1,6 @@
 package io.whaledoc.webhook;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import io.whaledoc.exceptions.ForwardException;
 import io.whaledoc.http.ApiClient;
 import io.whaledoc.http.ApiConstants;
 import io.whaledoc.http.SseClient;
@@ -8,23 +8,24 @@ import io.whaledoc.http.SseConnection;
 import io.whaledoc.http.SseEvent;
 import org.apache.commons.lang3.StringUtils;
 
+import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
 
 public final class WebhookClient {
 
+    private static final Duration FORWARD_TIMEOUT = Duration.ofSeconds(10);
+    private static final Set<String> FORWARD_SCHEMES = Set.of("http", "https");
+
     private final ApiClient apiClient;
     private final SseClient sseClient;
     private final HttpClient httpClient;
-
-    public WebhookClient() {
-        this(new ApiClient(new ObjectMapper()), new SseClient(), HttpClient.newHttpClient());
-    }
 
     public WebhookClient(ApiClient apiClient, SseClient sseClient, HttpClient httpClient) {
         this.apiClient = apiClient;
@@ -32,40 +33,58 @@ public final class WebhookClient {
         this.httpClient = httpClient;
     }
 
-    public void forward(String url, SseEvent event) {
+    /**
+     * Parses a --forward-to value. A missing scheme defaults to http, so {@code localhost:8080/events} works.
+     */
+    public static URI parseForwardUrl(String value) {
 
-        if (StringUtils.isBlank(url)) {
-            throw new IllegalArgumentException("forward URL is required");
+        String url = value.strip();
+
+        if (!url.contains("://")) {
+            url = "http://" + url;
         }
 
-        Objects.requireNonNull(event);
-
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(event.data()))
-                .build();
-
         try {
-            HttpResponse<Void> response = httpClient.send(
-                    request,
-                    HttpResponse.BodyHandlers.discarding()
-            );
+            URI uri = URI.create(url);
 
-            if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                throw new RuntimeException(
-                        "Forwarding webhook event failed with status " + response.statusCode()
-                );
+            if (!FORWARD_SCHEMES.contains(uri.getScheme()) || uri.getHost() == null) {
+                throw new IllegalArgumentException("Invalid forward URL: " + value);
             }
 
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new RuntimeException("Forwarding webhook event was interrupted.", e);
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to forward webhook event.", e);
+            return uri;
+
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Invalid forward URL: " + value, e);
         }
     }
 
+    /**
+     * Posts the event's data to the target and returns the response status.
+     *
+     * @throws ForwardException when the target can't be reached or doesn't respond with a 2xx status
+     */
+    public int forward(URI target, SseEvent event) {
+
+        Objects.requireNonNull(target);
+        Objects.requireNonNull(event);
+
+        try {
+            HttpResponse<Void> response = httpClient.send(createForwardRequest(target, event), HttpResponse.BodyHandlers.discarding());
+
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                throw new ForwardException("%s responded with HTTP %d".formatted(target, response.statusCode()));
+            }
+
+            return response.statusCode();
+
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ForwardException("Forwarding to %s was interrupted.".formatted(target), e);
+
+        } catch (IOException e) {
+            throw new ForwardException("Unable to reach %s".formatted(target), e);
+        }
+    }
 
     public SseConnection listen(String accessToken, Set<String> events, Consumer<SseEvent> eventConsumer) {
 
@@ -76,14 +95,31 @@ public final class WebhookClient {
         Objects.requireNonNull(events);
         Objects.requireNonNull(eventConsumer);
 
-        URI uri = URI.create(
-                apiClient.baseUrl() + ApiConstants.WEBHOOK_EVENTS
-        );
+        URI uri = URI.create(apiClient.baseUrl() + ApiConstants.WEBHOOK_EVENTS);
 
         return sseClient.connect(uri, accessToken, event -> {
-            if (events.contains("*") || events.contains(event.event())) {
+            if (events.contains(WebhookEvents.ALL) || events.contains(event.event())) {
                 eventConsumer.accept(event);
             }
         });
+    }
+
+    // Event type and ID headers let the local endpoint handle events like real webhook deliveries
+    private static HttpRequest createForwardRequest(URI target, SseEvent event) {
+
+        HttpRequest.Builder request = HttpRequest.newBuilder(target)
+                .timeout(FORWARD_TIMEOUT)
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(event.data()));
+
+        if (event.event() != null) {
+            request.header("WhaleDoc-Event", event.event());
+        }
+
+        if (event.id() != null) {
+            request.header("WhaleDoc-Event-Id", event.id());
+        }
+
+        return request.build();
     }
 }
