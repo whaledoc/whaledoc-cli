@@ -1,0 +1,91 @@
+name: Native build
+
+# Reusable workflow: builds, smoke-tests and uploads the native executable for every platform.
+# Called by build.yml (pull requests and main) and release.yml.
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Version to build, e.g. 1.2.0. Empty keeps the version from pom.xml.
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    name: native (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux builds run on the oldest supported Ubuntu so the binary links against an older glibc
+          - target: linux-x64
+            os: ubuntu-22.04
+          - target: linux-arm64
+            os: ubuntu-22.04-arm
+          - target: macos-x64
+            os: macos-15-intel
+          - target: macos-arm64
+            os: macos-15
+          - target: windows-x64
+            os: windows-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: '25'
+          distribution: graalvm-community
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache: maven
+
+      - name: Set version
+        if: inputs.version != ''
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: ./mvnw -B -q versions:set -DnewVersion="$VERSION" -DgenerateBackupPoms=false
+
+      - name: Build native executable
+        shell: bash
+        run: ./mvnw -B -Pnative package
+
+      - name: Smoke test
+        shell: bash
+        run: |
+          bin=target/whaledoc
+          [ "$RUNNER_OS" = "Windows" ] && bin=target/whaledoc.exe
+
+          expected="WhaleDoc version $(./mvnw -B -q help:evaluate -Dexpression=project.version -DforceStdout)"
+          actual="$("$bin" --version | tr -d '\r')"
+          echo "$actual"
+
+          # An exact match also catches logback or reflection warnings printed at startup
+          if [ "$actual" != "$expected" ]; then
+            echo "::error::Expected '$expected' but got '$actual'"
+            exit 1
+          fi
+
+          "$bin" --help
+          "$bin" listen --help
+
+      - name: Package
+        shell: bash
+        run: |
+          mkdir dist
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            (cd target && 7z a -tzip "../dist/whaledoc-${{ matrix.target }}.zip" whaledoc.exe)
+          else
+            tar -czf "dist/whaledoc-${{ matrix.target }}.tar.gz" -C target whaledoc
+          fi
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: whaledoc-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
