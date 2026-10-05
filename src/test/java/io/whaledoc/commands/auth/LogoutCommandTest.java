@@ -3,6 +3,7 @@ package io.whaledoc.commands.auth;
 import io.whaledoc.auth.AuthClient;
 import io.whaledoc.config.ConfigManager;
 import io.whaledoc.config.WhaleDocConfig;
+import io.whaledoc.console.TestConsole;
 import io.whaledoc.exceptions.ApiException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -30,11 +31,13 @@ class LogoutCommandTest {
     @Mock
     private AuthClient authClient;
 
+    private final TestConsole testConsole = TestConsole.plain();
+
     private LogoutCommand logoutCommand;
 
     @BeforeEach
     void setUp() {
-        logoutCommand = new LogoutCommand(configManager, authClient);
+        logoutCommand = new LogoutCommand(configManager, authClient, testConsole.console());
     }
 
     @Test
@@ -82,6 +85,7 @@ class LogoutCommandTest {
 
         // then
         assertThat(exitCode).isEqualTo(1);
+        assertThat(testConsole.errors()).isEqualToIgnoringNewLines("x Logout failed: API request failed with status 500: Internal Server Error");
         then(configManager).should(never()).saveToFile(any());
     }
 

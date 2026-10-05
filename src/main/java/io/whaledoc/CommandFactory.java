@@ -25,10 +25,10 @@ public final class CommandFactory implements CommandLine.IFactory {
     public CommandFactory(ApplicationContext context) {
 
         this.factories = Map.of(
-                LoginCommand.class, () -> new LoginCommand(context.configManager(), context.authClient(), new BrowserLauncher(), System.in),
-                LogoutCommand.class, () -> new LogoutCommand(context.configManager(), context.authClient()),
-                ListenCommand.class, () -> new ListenCommand(context.configManager(), context.webhookClient()),
-                UpdateCommand.class, () -> new UpdateCommand(context.updateService(), Version.parse(context.config().version())),
+                LoginCommand.class, () -> new LoginCommand(context.configManager(), context.authClient(), new BrowserLauncher(), context.console()),
+                LogoutCommand.class, () -> new LogoutCommand(context.configManager(), context.authClient(), context.console()),
+                ListenCommand.class, () -> new ListenCommand(context.configManager(), context.webhookClient(), context.console()),
+                UpdateCommand.class, () -> new UpdateCommand(context.updateService(), Version.parse(context.config().version()), context.console()),
                 VersionProvider.class, () -> new VersionProvider(context.config().version())
         );
     }

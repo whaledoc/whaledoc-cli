@@ -1,10 +1,11 @@
 package io.whaledoc.commands.auth;
 
 import io.whaledoc.auth.AuthClient;
-import io.whaledoc.exceptions.ApiException;
-import io.whaledoc.utility.Spinner;
 import io.whaledoc.config.ConfigManager;
 import io.whaledoc.config.WhaleDocConfig;
+import io.whaledoc.console.Console;
+import io.whaledoc.console.Spinner;
+import io.whaledoc.exceptions.ApiException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import picocli.CommandLine.Command;
@@ -21,22 +22,25 @@ public class LogoutCommand implements Callable<Integer> {
 
     private final ConfigManager configManager;
     private final AuthClient authClient;
+    private final Console console;
 
-    public LogoutCommand(ConfigManager configManager, AuthClient authClient) {
+    public LogoutCommand(ConfigManager configManager, AuthClient authClient, Console console) {
         this.configManager = configManager;
         this.authClient = authClient;
+        this.console = console;
     }
 
     @Override
     public Integer call() {
+
         WhaleDocConfig config = configManager.load();
 
         if (StringUtils.isBlank(config.accessToken())) {
-            System.out.println("You are already logged out.");
+            console.println("You're already logged out.");
             return 0;
         }
 
-        Spinner spinner = new Spinner("Logging out...");
+        Spinner spinner = console.spinner("Logging out...");
         spinner.start();
 
         try {
@@ -49,17 +53,13 @@ public class LogoutCommand implements Callable<Integer> {
             );
 
             spinner.stop();
-            System.out.println("> Logged out");
-
+            console.success("Logged out");
             return 0;
 
         } catch (ApiException e) {
-
             spinner.stop();
-            System.out.println("! Logout failed");
-
             log.error("Logout failed", e);
-
+            console.error("Logout failed: " + e.getMessage());
             return 1;
         }
     }

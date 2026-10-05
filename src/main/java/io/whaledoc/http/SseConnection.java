@@ -16,6 +16,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class SseConnection implements AutoCloseable {
 
     private final AtomicBoolean closed = new AtomicBoolean(false);
+    private final CompletableFuture<Void> connected = new CompletableFuture<>();
     private final CompletableFuture<Void> completion = new CompletableFuture<>();
 
     private volatile InputStream inputStream;
@@ -29,13 +30,26 @@ public final class SseConnection implements AutoCloseable {
         this.readerThread = Objects.requireNonNull(readerThread);
     }
 
+    void markConnected() {
+        connected.complete(null);
+    }
+
     void fail(ApiException error) {
 
         if (closed.compareAndSet(false, true)) {
             closeInputStream();
         }
 
+        connected.completeExceptionally(error);
         completion.completeExceptionally(error);
+    }
+
+    /**
+     * Completes once the stream is open for the first time, or exceptionally with an {@link ApiException}
+     * when it could not be opened.
+     */
+    public CompletableFuture<Void> connected() {
+        return connected.copy();
     }
 
     /**
@@ -79,6 +93,7 @@ public final class SseConnection implements AutoCloseable {
 
         closeInputStream();
         interruptReaderThread();
+        connected.cancel(false);
         completion.complete(null);
     }
 

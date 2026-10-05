@@ -2,6 +2,8 @@ package io.whaledoc.commands.webhook;
 
 import io.whaledoc.config.ConfigManager;
 import io.whaledoc.config.WhaleDocConfig;
+import io.whaledoc.console.Console;
+import io.whaledoc.console.Spinner;
 import io.whaledoc.exceptions.ApiException;
 import io.whaledoc.exceptions.ForwardException;
 import io.whaledoc.http.SseConnection;
@@ -16,11 +18,12 @@ import picocli.CommandLine.Option;
 import picocli.CommandLine.Spec;
 
 import java.net.URI;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
+import java.time.Clock;
 import java.util.Arrays;
 import java.util.Set;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
 @Command(
@@ -50,10 +53,10 @@ import java.util.stream.Collectors;
 @Slf4j
 public class ListenCommand implements Callable<Integer> {
 
-    private static final DateTimeFormatter TIMESTAMP_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-
     private final ConfigManager configManager;
     private final WebhookClient webhookClient;
+    private final Console console;
+    private final EventPrinter eventPrinter;
 
     @Option(
             names = {"-e", "--events"},
@@ -76,9 +79,11 @@ public class ListenCommand implements Callable<Integer> {
 
     private URI forwardTarget;
 
-    public ListenCommand(ConfigManager configManager, WebhookClient webhookClient) {
+    public ListenCommand(ConfigManager configManager, WebhookClient webhookClient, Console console) {
         this.configManager = configManager;
         this.webhookClient = webhookClient;
+        this.console = console;
+        this.eventPrinter = new EventPrinter(console, Clock.systemDefaultZone());
     }
 
     @Override
@@ -87,29 +92,21 @@ public class ListenCommand implements Callable<Integer> {
         WhaleDocConfig config = configManager.load();
 
         if (config.accessToken() == null || config.accessToken().isBlank()) {
-            System.out.println("You are not logged in. Run 'whaledoc login' first.");
+            console.error("You're not logged in. Run " + console.bold("whaledoc login") + " first.");
             return 1;
         }
 
         Set<String> eventFilter = resolveEvents();
         forwardTarget = resolveForwardTarget();
 
-        SseConnection connection = webhookClient.listen(
-                config.accessToken(),
-                eventFilter,
-                this::handleEvent
-        );
-
+        SseConnection connection = webhookClient.listen(config.accessToken(), eventFilter, this::handleEvent);
         Runtime.getRuntime().addShutdownHook(new Thread(connection::close));
 
-        if (forwardTarget != null) {
-            System.out.println("Forwarding events to " + forwardTarget);
-        }
-
-        System.out.println();
-        System.out.println("Listening for webhook events. (^C to quit)");
-
         try {
+            if (awaitConnected(connection)) {
+                printReady();
+            }
+
             connection.awaitCompletion();
             return 0;
 
@@ -120,15 +117,53 @@ public class ListenCommand implements Callable<Integer> {
 
         } catch (ApiException e) {
             log.error("Stopped listening for webhook events", e);
-            System.out.println("! " + describeFailure(e));
+            console.error(describeFailure(e));
             return 1;
         }
     }
 
-    private static String describeFailure(ApiException e) {
+    /**
+     * Waits until the event stream is open, so "Ready!" is only shown when events can actually arrive.
+     *
+     * @return false when the connection was closed before it opened, e.g. with Ctrl+C
+     */
+    private boolean awaitConnected(SseConnection connection) throws InterruptedException {
+
+        Spinner spinner = console.spinner("Connecting to WhaleDoc...");
+        spinner.start();
+
+        try {
+            connection.connected().get();
+            return true;
+
+        } catch (CancellationException e) {
+            return false;
+
+        } catch (ExecutionException e) {
+            throw e.getCause() instanceof ApiException apiException
+                    ? apiException
+                    : new ApiException("Unable to connect to WhaleDoc.", e.getCause());
+
+        } finally {
+            spinner.stop();
+        }
+    }
+
+    private void printReady() {
+
+        console.println(console.bold(console.brand("Ready!")) + " Listening for webhook events " + console.dim("(^C to quit)"));
+
+        if (forwardTarget != null) {
+            console.println(console.dim("Forwarding to ") + console.cyan(forwardTarget.toString()));
+        }
+
+        console.println();
+    }
+
+    private String describeFailure(ApiException e) {
 
         if (e.statusCode() == 401 || e.statusCode() == 403) {
-            return "Your login is no longer valid. Run 'whaledoc login' and try again.";
+            return "Your login is no longer valid. Run " + console.bold("whaledoc login") + " and try again.";
         }
 
         return "Stopped listening: " + e.getMessage();
@@ -172,28 +207,18 @@ public class ListenCommand implements Callable<Integer> {
 
     private void handleEvent(SseEvent event) {
 
-        String timestamp = LocalDateTime.now().format(TIMESTAMP_FORMAT);
-
-        if (forwardTarget != null) {
-            forwardEvent(timestamp, event);
+        if (forwardTarget == null) {
+            eventPrinter.printEvent(event);
             return;
         }
 
-        System.out.println();
-        System.out.println(timestamp + "  --> " + event.event());
-        System.out.println(event.data());
-    }
-
-    // A failing local endpoint is reported per event; listening continues for the next one
-    private void forwardEvent(String timestamp, SseEvent event) {
-
+        // A failing local endpoint is reported per event; listening continues for the next one
         try {
-            int status = webhookClient.forward(forwardTarget, event);
-            System.out.println("%s  --> %s [%d]".formatted(timestamp, event.event(), status));
+            eventPrinter.printForwarded(event, webhookClient.forward(forwardTarget, event));
 
         } catch (ForwardException e) {
             log.warn("Forwarding {} failed", event.event(), e);
-            System.out.println("%s  --> %s ! %s".formatted(timestamp, event.event(), e.getMessage()));
+            eventPrinter.printForwardFailed(event, e.getMessage());
         }
     }
 }
