@@ -13,8 +13,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
-import static com.github.tomakehurst.wiremock.client.WireMock.any;
-import static com.github.tomakehurst.wiremock.client.WireMock.anyRequestedFor;
+import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalToJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
@@ -110,13 +109,13 @@ class AuthClientTest {
     void shouldSendAccessTokenWhenLoggingOut() {
 
         // given
-        stubFor(any(urlEqualTo("/cli/auth/logout")).willReturn(noContent()));
+        stubFor(post(urlEqualTo("/cli/auth/logout")).willReturn(noContent()));
 
         // when
         authClient.logout("access-token");
 
         // then
-        verify(anyRequestedFor(urlEqualTo("/cli/auth/logout"))
+        verify(postRequestedFor(urlEqualTo("/cli/auth/logout"))
                 .withHeader("Authorization", equalTo("Bearer access-token")));
     }
 

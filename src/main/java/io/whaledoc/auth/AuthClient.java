@@ -111,7 +111,7 @@ public final class AuthClient {
             throw new IllegalArgumentException("accessToken must not be blank");
         }
 
-        apiClient.post(ApiConstants.AUTH_LOGOUT, accessToken);
+        apiClient.postAuthorized(ApiConstants.AUTH_LOGOUT, accessToken);
     }
 
     private record CreateAuthSessionRequest(String cliId) {

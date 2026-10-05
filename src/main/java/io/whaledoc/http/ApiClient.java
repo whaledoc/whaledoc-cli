@@ -8,8 +8,14 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Duration;
 
+/**
+ * Calls the WhaleDoc REST API. Every request carries the API version and expects a JSON response.
+ */
 public final class ApiClient {
+
+    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(30);
 
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
@@ -21,70 +27,60 @@ public final class ApiClient {
         this.baseUrl = baseUrl;
     }
 
-    public <T> T post(
-            String path,
-            Object requestBody,
-            Class<T> responseType
-    ) {
+    public <T> T post(String path, Object requestBody, Class<T> responseType) {
 
         try {
-            String body = objectMapper.writeValueAsString(requestBody);
-
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(baseUrl + path))
-                    .header("X-API-Version", ApiConstants.API_VERSION)
+            HttpRequest request = newRequest(path)
                     .header("Content-Type", "application/json")
-                    .header("Accept", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(body))
+                    .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(requestBody)))
                     .build();
 
-            HttpResponse<String> response =
-                    httpClient.send(
-                            request,
-                            HttpResponse.BodyHandlers.ofString()
-                    );
+            return objectMapper.readValue(send(request), responseType);
 
-            if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                throw new ApiException(response.statusCode(), response.body());
-            }
-
-            return objectMapper.readValue(response.body(), responseType);
-
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new ApiException("HTTP request was interrupted.", e);
         } catch (IOException e) {
-            throw new ApiException("HTTP request failed.", e);
+            throw new ApiException("Unable to process the API response.", e);
         }
     }
 
-    public void post(String path, String accessToken) {
-        try {
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(baseUrl + path))
-                    .header("X-API-Version", ApiConstants.API_VERSION)
-                    .header("Accept", "application/json")
-                    .header("Authorization", "Bearer " + accessToken)
-                    .build();
+    public void postAuthorized(String path, String accessToken) {
 
-            HttpResponse<String> response = httpClient.send(
-                    request,
-                    HttpResponse.BodyHandlers.ofString()
-            );
+        HttpRequest request = newRequest(path)
+                .header("Authorization", "Bearer " + accessToken)
+                .POST(HttpRequest.BodyPublishers.noBody())
+                .build();
 
-            if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                throw new ApiException(response.statusCode(), response.body());
-            }
-
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new ApiException("HTTP request was interrupted.", e);
-        } catch (IOException e) {
-            throw new ApiException("HTTP request failed.", e);
-        }
+        send(request);
     }
 
     public String baseUrl() {
         return baseUrl;
+    }
+
+    private HttpRequest.Builder newRequest(String path) {
+
+        return HttpRequest.newBuilder(URI.create(baseUrl + path))
+                .timeout(REQUEST_TIMEOUT)
+                .header("X-API-Version", ApiConstants.API_VERSION)
+                .header("Accept", "application/json");
+    }
+
+    private String send(HttpRequest request) {
+
+        try {
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                throw new ApiException(response.statusCode(), response.body());
+            }
+
+            return response.body();
+
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ApiException("HTTP request was interrupted.", e);
+
+        } catch (IOException e) {
+            throw new ApiException("Unable to reach WhaleDoc. Check your internet connection.", e);
+        }
     }
 }

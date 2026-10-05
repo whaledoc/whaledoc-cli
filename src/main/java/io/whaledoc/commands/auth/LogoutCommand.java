@@ -14,7 +14,8 @@ import java.util.concurrent.Callable;
 @Slf4j
 @Command(
         name = "logout",
-        description = "Logout of your WhaleDoc account"
+        mixinStandardHelpOptions = true,
+        description = "Log out of your WhaleDoc account."
 )
 public class LogoutCommand implements Callable<Integer> {
 
