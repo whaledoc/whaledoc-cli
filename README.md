@@ -1,5 +1,9 @@
 # WhaleDoc CLI
 
+[![Build](https://github.com/whaledoc/whaledoc-cli/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/whaledoc/whaledoc-cli/actions/workflows/build.yml)
+![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Linux%20%7C%20Windows-FBAA53)
+![Native executable](https://img.shields.io/badge/native-GraalVM-FBAA53)
+
 The official command-line interface for [WhaleDoc](https://whaledoc.io).
 
 Use WhaleDoc CLI to authenticate, listen for webhook events, and forward events to your local development environment.
