@@ -159,6 +159,16 @@ whaledoc listen \
 
 This makes it possible to develop and test webhook integrations locally without exposing your application to the internet.
 
+### `update`
+
+Update the CLI to the latest version.
+
+```sh
+whaledoc update
+```
+
+The CLI downloads the release for your platform, verifies its checksum, and replaces itself. Use `--check` to only see whether a newer version is available.
+
 ## Webhook Events
 
 The WhaleDoc CLI currently supports the following webhook events:
@@ -191,7 +201,21 @@ whaledoc --version
 
 ## Upgrading
 
-Run the install command or the Windows installer again. It replaces your current version with the latest release.
+Update to the latest version:
+
+```sh
+whaledoc update
+```
+
+To only check whether a newer version is available:
+
+```sh
+whaledoc update --check
+```
+
+Running the install command or the Windows installer again also installs the latest version.
+
+If the CLI is installed in a system directory such as `/usr/local/bin`, run `sudo whaledoc update`.
 
 ## Uninstalling
 
