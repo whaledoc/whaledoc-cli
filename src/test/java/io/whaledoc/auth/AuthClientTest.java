@@ -116,7 +116,7 @@ class AuthClientTest {
     void shouldFailRightAwayWhenLoginSessionIsUnknown() {
 
         // given
-        stubFor(get(urlEqualTo("/cli/auth/login/" + SESSION_ID)).willReturn(notFound()));
+        stubFor(get(urlEqualTo("/cli/auth/sessions/" + SESSION_ID + "/events")).willReturn(notFound()));
 
         // when
         CompletableFuture<String> actualAccessToken = authClient.waitForAuthentication(createExpectedSession());
@@ -145,7 +145,7 @@ class AuthClientTest {
 
     private void givenSessionCanBeCreated() {
 
-        stubFor(post(urlEqualTo("/cli/auth/login"))
+        stubFor(post(urlEqualTo("/cli/auth/sessions"))
                 .withRequestBody(equalToJson("""
                         { "cliId": "cli-1" }
                         """))
@@ -160,7 +160,7 @@ class AuthClientTest {
 
     private void givenAuthenticationEventIsSent(String data) {
 
-        stubFor(get(urlEqualTo("/cli/auth/login/" + SESSION_ID))
+        stubFor(get(urlEqualTo("/cli/auth/sessions/" + SESSION_ID + "/events"))
                 .willReturn(aResponse()
                         .withHeader("Content-Type", "text/event-stream")
                         .withBody("event: authenticated%ndata: %s%n%n".formatted(data.strip()))));

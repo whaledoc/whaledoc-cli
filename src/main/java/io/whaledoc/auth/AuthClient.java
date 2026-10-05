@@ -40,7 +40,7 @@ public final class AuthClient {
                 new CreateAuthSessionRequest(cliId);
 
         CreateAuthSessionResponse response = apiClient.post(
-                ApiConstants.AUTH_LOGIN,
+                ApiConstants.AUTH_SESSIONS,
                 request,
                 CreateAuthSessionResponse.class
         );
@@ -58,7 +58,7 @@ public final class AuthClient {
 
         Objects.requireNonNull(session, "session must not be null");
 
-        URI eventsUri = URI.create(apiClient.baseUrl() + ApiConstants.AUTH_LOGIN_EVENT.formatted(session.sessionId()));
+        URI eventsUri = URI.create(apiClient.baseUrl() + ApiConstants.AUTH_SESSION_EVENTS.formatted(session.sessionId()));
         CompletableFuture<String> accessToken = new CompletableFuture<>();
 
         SseConnection connection = sseClient.connect(eventsUri, event -> handleEvent(event, accessToken));
