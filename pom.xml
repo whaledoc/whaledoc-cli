@@ -19,6 +19,7 @@
         <slf4j-api.version>2.0.20</slf4j-api.version>
         <commons-lang3.version>3.21.0</commons-lang3.version>
         <logback-classic.version>1.6.5</logback-classic.version>
+        <native-maven-plugin.version>0.11.1</native-maven-plugin.version>
     </properties>
 
     <!--
@@ -105,7 +106,16 @@
                             <artifactId>lombok</artifactId>
                             <version>${lombok.version}</version>
                         </path>
+                        <!-- Generates GraalVM reflection config for all picocli commands -->
+                        <path>
+                            <groupId>info.picocli</groupId>
+                            <artifactId>picocli-codegen</artifactId>
+                            <version>${picocli.version}</version>
+                        </path>
                     </annotationProcessorPaths>
+                    <compilerArgs>
+                        <arg>-Aproject=${project.groupId}/${project.artifactId}</arg>
+                    </compilerArgs>
                 </configuration>
             </plugin>
 
@@ -148,5 +158,45 @@
 
         </plugins>
     </build>
+
+    <profiles>
+        <!-- Builds a native executable with GraalVM: ./mvnw -Pnative package -->
+        <profile>
+            <id>native</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.graalvm.buildtools</groupId>
+                        <artifactId>native-maven-plugin</artifactId>
+                        <version>${native-maven-plugin.version}</version>
+                        <extensions>true</extensions>
+                        <executions>
+                            <execution>
+                                <id>build-native</id>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>compile-no-fork</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                        <configuration>
+                            <imageName>whaledoc</imageName>
+                            <mainClass>io.whaledoc.WhaleDocCli</mainClass>
+                            <metadataRepository>
+                                <enabled>true</enabled>
+                            </metadataRepository>
+                            <buildArgs>
+                                <buildArg>--no-fallback</buildArg>
+                                <!-- Target a baseline CPU so binaries run on older machines, not just the CI runner's -->
+                                <buildArg>-march=compatibility</buildArg>
+                                <buildArg>--enable-url-protocols=http,https</buildArg>
+                                <buildArg>-H:+ReportExceptionStackTraces</buildArg>
+                            </buildArgs>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 
 </project>
