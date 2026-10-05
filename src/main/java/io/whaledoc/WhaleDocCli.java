@@ -56,9 +56,10 @@ public class WhaleDocCli implements Runnable {
 
         UpdateService.cleanUpPreviousVersion();
 
-        CommandLine commandLine = new CommandLine(new WhaleDocCli(), new CommandFactory(ApplicationContext.create()));
+        ApplicationContext context = ApplicationContext.create();
+        CommandLine commandLine = new CommandLine(new WhaleDocCli(), new CommandFactory(context));
 
-        commandLine.setColorScheme(CommandLine.Help.defaultColorScheme(CommandLine.Help.Ansi.ON));
+        commandLine.setColorScheme(context.console().helpColorScheme());
 
         int exitCode = commandLine.execute(args);
         System.exit(exitCode);
@@ -66,6 +67,6 @@ public class WhaleDocCli implements Runnable {
 
     @Override
     public void run() {
-        spec.commandLine().usage(System.out);
+        spec.commandLine().usage(spec.commandLine().getOut());
     }
 }
