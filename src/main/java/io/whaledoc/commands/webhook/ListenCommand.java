@@ -10,6 +10,8 @@ import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -24,12 +26,12 @@ import java.util.stream.Collectors;
                 "local machine by connecting directly to the WhaleDoc API. You can filter events",
                 "or forward them to a local HTTP endpoint.",
                 """
-
-                 @|bold Examples:|@
-                    whaledoc listen
-                    whaledoc listen --events document.created,document.completed \\
-                    --forward-to localhost:8080/events
-                """
+                        
+                         @|bold Examples:|@
+                            whaledoc listen
+                            whaledoc listen --events document.created,document.completed \\
+                            --forward-to localhost:8080/events
+                        """
         },
         headerHeading = "",
         synopsisHeading = "%nUsage:%n  ",
@@ -39,6 +41,8 @@ import java.util.stream.Collectors;
         }
 )
 public class ListenCommand implements Runnable {
+
+    private static final DateTimeFormatter TIMESTAMP_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private final ConfigManager configManager = new ConfigManager();
     private final WebhookClient webhookClient = new WebhookClient();
@@ -78,10 +82,15 @@ public class ListenCommand implements Runnable {
 
         Runtime.getRuntime().addShutdownHook(new Thread(connection::close));
 
-        System.out.println("Listening for webhook events. Press Ctrl+C to stop.");
+        if (forwardTo != null && !forwardTo.isBlank()) {
+            System.out.println("Forwarding events to " + forwardTo);
+        }
+
+        System.out.println();
+        System.out.println("Listening for webhook events. (^C to quit)");
 
         try {
-            Thread.currentThread().join();
+            connection.awaitCompletion();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             connection.close();
@@ -111,6 +120,17 @@ public class ListenCommand implements Runnable {
     }
 
     private void handleEvent(SseEvent event) {
+        String timestamp = LocalDateTime.now().format(TIMESTAMP_FORMAT);
+
+        if (forwardTo != null && !forwardTo.isBlank()) {
+            webhookClient.forward(forwardTo, event);
+            System.out.println(timestamp + "  --> " + event.event());
+            return;
+        }
+
+        System.out.println();
+        System.out.println(timestamp + "  --> " + event.event());
         System.out.println(event.data());
+
     }
 }

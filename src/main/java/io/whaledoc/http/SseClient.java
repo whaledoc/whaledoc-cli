@@ -19,6 +19,9 @@ import java.util.function.Consumer;
 public final class SseClient {
 
     private static final String SSE_MEDIA_TYPE = "text/event-stream";
+    private static final long INITIAL_RECONNECT_DELAY_MILLIS = 1_000;
+    private static final long MAX_RECONNECT_DELAY_MILLIS = 30_000;
+    private static final int MAX_RECONNECT_ATTEMPTS = 10;
 
     private final HttpClient httpClient;
     private final ThreadFactory threadFactory;
@@ -38,11 +41,8 @@ public final class SseClient {
         return connect(uri, null, eventConsumer);
     }
 
-    public SseConnection connect(
-            URI uri,
-            String accessToken,
-            Consumer<SseEvent> eventConsumer
-    ) {
+    public SseConnection connect(URI uri, String accessToken, Consumer<SseEvent> eventConsumer) {
+
         Objects.requireNonNull(uri, "uri must not be null");
         Objects.requireNonNull(eventConsumer, "eventConsumer must not be null");
 
@@ -72,41 +72,103 @@ public final class SseClient {
         return connection;
     }
 
-    private void connectAndRead(HttpRequest request, SseConnection connection, Consumer<SseEvent> eventConsumer) {
+    private void connectAndRead(
+            HttpRequest request,
+            SseConnection connection,
+            Consumer<SseEvent> eventConsumer
+    ) {
 
-        try {
-            HttpResponse<InputStream> response =
-                    httpClient.send(
-                            request,
-                            HttpResponse.BodyHandlers.ofInputStream()
-                    );
+        long reconnectDelay = INITIAL_RECONNECT_DELAY_MILLIS;
+        int reconnectAttempts = 0;
 
-            validateResponse(response);
+        while (connection.isOpen()) {
+
+            try {
+                HttpResponse<InputStream> response =
+                        httpClient.send(
+                                request,
+                                HttpResponse.BodyHandlers.ofInputStream()
+                        );
+
+                validateResponse(response);
+
+                if (!connection.isOpen()) {
+                    response.body().close();
+                    return;
+                }
+
+                connection.setInputStream(response.body());
+
+                /*
+                 * The HTTP connection was successfully established.
+                 *
+                 * Reset the reconnect state. If the server later
+                 * closes the SSE stream, the next reconnect starts
+                 * from the beginning of the backoff sequence.
+                 */
+                reconnectAttempts = 0;
+                reconnectDelay = INITIAL_RECONNECT_DELAY_MILLIS;
+
+                readEvents(response.body(), connection, eventConsumer);
+
+                /*
+                 * The server closed the SSE stream.
+                 * Reconnect while the connection is still open.
+                 */
+                if (!connection.isOpen()) {
+                    return;
+                }
+
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+
+            } catch (ApiException e) {
+                if (!connection.isOpen()) {
+                    return;
+                }
+
+                /*
+                 * Authentication/authorization failures are not recoverable.
+                 */
+                if (e.statusCode() == 401 || e.statusCode() == 403) {
+                    return;
+                }
+
+                /*
+                 * Client-side errors are not recoverable.
+                 */
+                if (e.statusCode() < 500) {
+                    return;
+                }
+
+            } catch (IOException e) {
+                if (!connection.isOpen()) {
+                    return;
+                }
+            }
 
             if (!connection.isOpen()) {
-                response.body().close();
                 return;
             }
 
-            connection.setInputStream(response.body());
+            reconnectAttempts++;
 
-            readEvents(
-                    response.body(),
-                    connection,
-                    eventConsumer
-            );
-
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-
-        } catch (IOException e) {
-
-            if (connection.isOpen()) {
-                throw new ApiException("SSE connection failed.", e);
+            if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+                return;
             }
 
-        } finally {
-            connection.close();
+            try {
+                Thread.sleep(reconnectDelay);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+
+            reconnectDelay = Math.min(
+                    reconnectDelay * 2,
+                    MAX_RECONNECT_DELAY_MILLIS
+            );
         }
     }
 
@@ -115,7 +177,9 @@ public final class SseClient {
         int statusCode = response.statusCode();
 
         if (statusCode < 200 || statusCode >= 300) {
+
             try (InputStream body = response.body()) {
+
                 String responseBody = new String(
                         body.readAllBytes(),
                         StandardCharsets.UTF_8
@@ -139,11 +203,15 @@ public final class SseClient {
         }
     }
 
-    private void readEvents(InputStream inputStream,
-                            SseConnection connection,
-                            Consumer<SseEvent> eventConsumer) throws IOException {
+    private void readEvents(
+            InputStream inputStream,
+            SseConnection connection,
+            Consumer<SseEvent> eventConsumer
+    ) throws IOException {
 
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(inputStream, StandardCharsets.UTF_8)
+        )) {
 
             String event = null;
             String id = null;
@@ -190,25 +258,20 @@ public final class SseClient {
 
                 if (line.startsWith("event:")) {
                     event = parseFieldValue(line);
-                }
-
-                else if (line.startsWith("data:")) {
+                } else if (line.startsWith("data:")) {
                     if (data.length() > 0) {
                         data.append('\n');
                     }
 
                     data.append(parseFieldValue(line));
-                }
-
-                else if (line.startsWith("id:")) {
+                } else if (line.startsWith("id:")) {
                     id = parseFieldValue(line);
                 }
 
                 /*
                  * retry: is deliberately not handled here.
                  *
-                 * Reconnection belongs to a higher-level
-                 * listener rather than the low-level SSE client.
+                 * Reconnection uses the client's own backoff policy.
                  */
             }
         }

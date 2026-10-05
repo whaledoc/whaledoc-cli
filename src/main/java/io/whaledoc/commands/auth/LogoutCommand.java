@@ -26,7 +26,7 @@ public class LogoutCommand implements Callable<Integer> {
         WhaleDocConfig config = configManager.load();
 
         if (StringUtils.isBlank(config.accessToken())) {
-            System.out.println("You are not logged in.");
+            System.out.println("You are already logged out.");
             return 0;
         }
 
@@ -43,14 +43,14 @@ public class LogoutCommand implements Callable<Integer> {
             );
 
             spinner.stop();
-            System.out.println("✓ Logged out");
+            System.out.println("> Logged out");
 
             return 0;
 
         } catch (ApiException e) {
 
             spinner.stop();
-            System.out.println("✗ Logout failed");
+            System.out.println("! Logout failed");
 
             log.error("Logout failed", e);
 

@@ -72,15 +72,15 @@ public class LoginCommand implements Callable<Integer> {
             );
             spinner.stop();
 
-            System.out.println("✓ Authenticated");
+            System.out.println("> Authenticated");
 
             return 0;
 
         } catch (Exception e) {
 
             spinner.stop();
-            log.error("✗ Authentication failed", e);
-            System.out.println("x Authentication failed");
+            log.error("! Authentication failed", e);
+            System.out.println("! Authentication failed");
 
             return 1;
         }

@@ -3,11 +3,13 @@ package io.whaledoc.http;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Objects;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class SseConnection implements AutoCloseable {
 
     private final AtomicBoolean closed = new AtomicBoolean(false);
+    private final CountDownLatch completion = new CountDownLatch(1);
 
     private volatile InputStream inputStream;
     private volatile Thread readerThread;
@@ -18,6 +20,14 @@ public final class SseConnection implements AutoCloseable {
 
     void setReaderThread(Thread readerThread) {
         this.readerThread = Objects.requireNonNull(readerThread);
+    }
+
+    void complete() {
+        completion.countDown();
+    }
+
+    public void awaitCompletion() throws InterruptedException {
+        completion.await();
     }
 
     public boolean isOpen() {
@@ -32,6 +42,7 @@ public final class SseConnection implements AutoCloseable {
 
         closeInputStream();
         interruptReaderThread();
+        completion.countDown();
     }
 
     private void closeInputStream() {
