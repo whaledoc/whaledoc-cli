@@ -21,9 +21,13 @@ public final class ConfigManager {
     private final Path configFile;
 
     public ConfigManager() {
+        this(resolveConfigDirectory());
+    }
+
+    public ConfigManager(Path configDirectory) {
 
         this.objectMapper = new ObjectMapper();
-        this.configDirectory = resolveConfigDirectory();
+        this.configDirectory = configDirectory;
         this.configFile = configDirectory.resolve(CONFIG_FILE_NAME);
     }
 
@@ -68,7 +72,7 @@ public final class ConfigManager {
         }
     }
 
-    private Path resolveConfigDirectory() {
+    private static Path resolveConfigDirectory() {
 
         String os = System.getProperty("os.name").toLowerCase();
 

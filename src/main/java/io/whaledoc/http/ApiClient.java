@@ -17,9 +17,13 @@ public final class ApiClient {
     private final String baseUrl;
 
     public ApiClient(ObjectMapper objectMapper) {
+        this(objectMapper, new ApplicationConfig().getApiUrl());
+    }
+
+    public ApiClient(ObjectMapper objectMapper, String baseUrl) {
         this.httpClient = HttpClient.newHttpClient();
         this.objectMapper = objectMapper;
-        this.baseUrl = new ApplicationConfig().getApiUrl();
+        this.baseUrl = baseUrl;
     }
 
     public <T> T post(

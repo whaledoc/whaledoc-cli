@@ -18,8 +18,17 @@ import java.util.concurrent.Callable;
 )
 public class LogoutCommand implements Callable<Integer> {
 
-    private final ConfigManager configManager = new ConfigManager();
-    private final AuthClient authClient = new AuthClient();
+    private final ConfigManager configManager;
+    private final AuthClient authClient;
+
+    public LogoutCommand() {
+        this(new ConfigManager(), new AuthClient());
+    }
+
+    public LogoutCommand(ConfigManager configManager, AuthClient authClient) {
+        this.configManager = configManager;
+        this.authClient = authClient;
+    }
 
     @Override
     public Integer call() {
