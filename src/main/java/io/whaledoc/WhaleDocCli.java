@@ -2,8 +2,10 @@ package io.whaledoc;
 
 import io.whaledoc.commands.auth.LoginCommand;
 import io.whaledoc.commands.auth.LogoutCommand;
+import io.whaledoc.commands.update.UpdateCommand;
 import io.whaledoc.commands.webhook.ListenCommand;
 import io.whaledoc.config.ConfigManager;
+import io.whaledoc.update.UpdateService;
 import io.whaledoc.utility.VersionProvider;
 import io.whaledoc.config.WhaleDocConfig;
 import lombok.extern.slf4j.Slf4j;
@@ -18,7 +20,8 @@ import static picocli.CommandLine.*;
         subcommands = {
                 LoginCommand.class,
                 LogoutCommand.class,
-                ListenCommand.class
+                ListenCommand.class,
+                UpdateCommand.class
         },
         mixinStandardHelpOptions = true,
         header = {
@@ -54,6 +57,8 @@ public class WhaleDocCli implements Runnable {
     boolean version;
 
     public static void main(String... args) {
+
+        UpdateService.cleanUpPreviousVersion();
 
         ConfigManager configManager = new ConfigManager();
         WhaleDocConfig config = configManager.load();

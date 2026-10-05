@@ -73,6 +73,7 @@ jobs:
 
           "$bin" --help
           "$bin" listen --help
+          "$bin" update --help
 
       - name: Package
         shell: bash

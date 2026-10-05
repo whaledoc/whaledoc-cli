@@ -14,6 +14,8 @@
         <maven.compiler.target>25</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <whaledoc.api.url>https://api.whaledoc.io</whaledoc.api.url>
+        <!-- Where `whaledoc update` downloads releases from: {url}/latest/download/version.txt and {url}/download/v{version}/{file} -->
+        <whaledoc.releases.url>https://github.com/whaledoc/whaledoc-cli/releases</whaledoc.releases.url>
         <picocli.version>4.7.7</picocli.version>
         <lombok.version>1.18.48</lombok.version>
         <jackson.version>2.22.3</jackson.version>
@@ -21,6 +23,11 @@
         <commons-lang3.version>3.21.0</commons-lang3.version>
         <logback-classic.version>1.6.5</logback-classic.version>
         <native-maven-plugin.version>0.11.1</native-maven-plugin.version>
+        <junit.version>5.14.4</junit.version>
+        <mockito.version>5.24.0</mockito.version>
+        <assertj.version>3.27.7</assertj.version>
+        <wiremock.version>3.13.2</wiremock.version>
+        <maven-surefire-plugin.version>3.6.0</maven-surefire-plugin.version>
     </properties>
 
     <!--
@@ -70,6 +77,34 @@
             <groupId>org.apache.commons</groupId>
             <artifactId>commons-lang3</artifactId>
             <version>${commons-lang3.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${junit.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-junit-jupiter</artifactId>
+            <version>${mockito.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <version>${assertj.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.wiremock</groupId>
+            <artifactId>wiremock-standalone</artifactId>
+            <version>${wiremock.version}</version>
+            <scope>test</scope>
         </dependency>
     </dependencies>
 
@@ -155,6 +190,16 @@
                             <Implementation-Version>${project.version}</Implementation-Version>
                         </manifestEntries>
                     </archive>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>${maven-surefire-plugin.version}</version>
+                <configuration>
+                    <!-- Mockito attaches its agent at runtime, which recent JDKs only allow when enabled explicitly -->
+                    <argLine>-XX:+EnableDynamicAgentLoading -Xshare:off</argLine>
                 </configuration>
             </plugin>
 

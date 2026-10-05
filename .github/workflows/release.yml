@@ -111,9 +111,13 @@ jobs:
           pattern: whaledoc-*
           merge-multiple: true
 
-      - name: Add install scripts and checksums
+      - name: Add install scripts, version file and checksums
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
         run: |
           cp install.sh install.ps1 dist/
+          # Read by `whaledoc update` to find the latest version without calling the GitHub API
+          echo "$VERSION" > dist/version.txt
           cd dist
           sha256sum * > checksums.txt
           cat checksums.txt
