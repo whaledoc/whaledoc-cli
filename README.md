@@ -14,61 +14,51 @@ Use WhaleDoc CLI to authenticate, listen for webhook events, and forward events 
 
 ## Installation
 
-WhaleDoc CLI is available for macOS, Linux, and Windows.
+WhaleDoc CLI is a single native executable for macOS (Intel and Apple Silicon), Linux (x64 and arm64), and Windows (x64). It does not require Java.
 
-### macOS
-
-Install WhaleDoc CLI using Homebrew:
+### macOS and Linux
 
 ```sh
-brew install whaledoc/tap/whaledoc
+curl -fsSL https://github.com/whaledoc/whaledoc-cli/releases/latest/download/install.sh | bash
 ```
 
-Verify the installation:
-
-```sh
-whaledoc --version
-```
-
-### Ubuntu
-
-Install WhaleDoc CLI using Homebrew:
-
-```sh
-brew install whaledoc/tap/whaledoc
-```
-
-Verify the installation:
-
-```sh
-whaledoc --version
-```
-
-### Debian
-
-Install WhaleDoc CLI using Homebrew:
-
-```sh
-brew install whaledoc/tap/whaledoc
-```
-
-Verify the installation:
-
-```sh
-whaledoc --version
-```
+The script downloads the right binary for your system, verifies its checksum, installs it to `~/.whaledoc/bin`, and adds that directory to your `PATH`. Restart your terminal afterwards.
 
 ### Windows
 
-Download the latest Windows release from the [GitHub Releases](https://github.com/whaledoc/whaledoc-cli/releases) page.
-
-Add the directory containing `whaledoc.exe` to your `PATH`.
-
-Verify the installation:
+Run in PowerShell:
 
 ```powershell
+irm https://github.com/whaledoc/whaledoc-cli/releases/latest/download/install.ps1 | iex
+```
+
+The script installs `whaledoc.exe` to `%LOCALAPPDATA%\Programs\whaledoc` and adds it to your user `PATH`. Restart your terminal afterwards.
+
+### Verify the installation
+
+```sh
 whaledoc --version
 ```
+
+### Install options
+
+The install scripts read these environment variables:
+
+| Variable | Description |
+|---|---|
+| `WHALEDOC_VERSION` | Install a specific version, for example `1.2.0`. Defaults to the latest release. |
+| `WHALEDOC_INSTALL_DIR` | Install to a different directory. |
+| `WHALEDOC_NO_MODIFY_PATH` | Set to `1` to leave your shell profile unchanged (macOS and Linux). |
+
+For example, to install a specific version on macOS or Linux:
+
+```sh
+curl -fsSL https://github.com/whaledoc/whaledoc-cli/releases/latest/download/install.sh | WHALEDOC_VERSION=1.2.0 bash
+```
+
+### Manual installation
+
+Download the archive for your platform from the [GitHub Releases](https://github.com/whaledoc/whaledoc-cli/releases) page, extract it, and put `whaledoc` (or `whaledoc.exe`) in a directory on your `PATH`. Each release includes a `checksums.txt` file to verify the download.
 
 ## Getting Started
 
@@ -199,47 +189,39 @@ whaledoc --version
 
 ## Upgrading
 
-### macOS / Linux
-
-Update Homebrew:
-
-```sh
-brew update
-```
-
-Upgrade WhaleDoc CLI:
-
-```sh
-brew upgrade whaledoc
-```
-
-### Windows
-
-Download the latest release from the [GitHub Releases](https://github.com/whaledoc/whaledoc-cli/releases) page and replace your existing `whaledoc.exe`.
+Run the install command again. It replaces your current version with the latest release.
 
 ## Uninstalling
 
 ### macOS / Linux
 
-Uninstall WhaleDoc CLI:
+Delete the executable:
 
 ```sh
-brew uninstall whaledoc
+rm -rf ~/.whaledoc/bin
 ```
 
-If you no longer use the WhaleDoc Homebrew tap, you can remove it:
-
-```sh
-brew untap whaledoc/tap
-```
-
-Uninstalling the CLI does not remove your locally stored WhaleDoc configuration or credentials.
+Then remove the `# WhaleDoc CLI` line the installer added to your shell profile (`~/.zshrc`, `~/.bashrc`, `~/.config/fish/config.fish` or `~/.profile`).
 
 ### Windows
 
-Delete the `whaledoc.exe` executable.
+Delete the install directory and remove it from your user `PATH`:
 
-Your locally stored WhaleDoc configuration and credentials are not removed automatically.
+```powershell
+Remove-Item -Recurse "$env:LOCALAPPDATA\Programs\whaledoc"
+$path = ([Environment]::GetEnvironmentVariable('Path', 'User') -split ';' | Where-Object { $_ -notlike '*\Programs\whaledoc' }) -join ';'
+[Environment]::SetEnvironmentVariable('Path', $path, 'User')
+```
+
+### Configuration and logs
+
+Uninstalling does not remove your WhaleDoc configuration, credentials or logs. To remove them too, delete:
+
+| Platform | Configuration | Logs |
+|---|---|---|
+| macOS | `~/.config/whaledoc` | `~/.whaledoc/logs` |
+| Linux | `$XDG_CONFIG_HOME/whaledoc` or `~/.config/whaledoc` | `~/.whaledoc/logs` |
+| Windows | `%APPDATA%\WhaleDoc` | `%USERPROFILE%\.whaledoc\logs` |
 
 ## Documentation
 
@@ -276,7 +258,8 @@ When reporting a bug, include:
 ### Requirements
 
 - Java 25+
-- Maven 3.9+
+- [GraalVM](https://www.graalvm.org/) for JDK 25, only to build the native executable
+- Maven is not required: use the included Maven Wrapper (`./mvnw`, or `mvnw.cmd` on Windows)
 
 Clone the repository:
 
@@ -288,13 +271,13 @@ cd whaledoc-cli
 Build the project:
 
 ```sh
-mvn clean package
+./mvnw clean package
 ```
 
 Run the CLI:
 
 ```sh
-java -jar target/cli-1.0.0.jar
+java -jar target/whaledoc.jar
 ```
 
 ### Running tests
@@ -302,7 +285,7 @@ java -jar target/cli-1.0.0.jar
 Run the complete test suite:
 
 ```sh
-mvn test
+./mvnw test
 ```
 
 ### Local API
@@ -310,8 +293,44 @@ mvn test
 When developing against a local WhaleDoc API instance, build the CLI with the local API URL:
 
 ```sh
-mvn clean package -Dwhaledoc.api.url=http://localhost:8080
+./mvnw clean package -Dwhaledoc.api.url=http://localhost:8080
 ```
+
+### Native executable
+
+Build the native executable with GraalVM (on Windows this also requires the Visual Studio C++ build tools):
+
+```sh
+./mvnw -Pnative package
+./target/whaledoc --version
+```
+
+Native images can't discover reflection at runtime. When you add a class that Jackson reads or writes, register it in `src/main/resources/META-INF/native-image/io.whaledoc/cli/reachability-metadata.json`, otherwise it fails only in the native executable.
+
+### Releasing
+
+Every pull request builds and smoke-tests native executables for all platforms.
+
+To publish a release, open **Actions → Release → Run workflow** on `main` and choose which part of the version to increase, following [Semantic Versioning](https://semver.org):
+
+| Bump | Example | Use for |
+|---|---|---|
+| `major` | `1.4.2` → `2.0.0` | Breaking changes: removed or renamed commands or flags, changed output or config format |
+| `minor` | `1.4.2` → `1.5.0` | New commands, flags or events that don't break anything |
+| `patch` | `1.4.2` → `1.4.3` | Bug fixes |
+
+The first release is created with `major` (`0.0.0` → `1.0.0`). To publish a pre-release such as `1.5.0-beta.1`, also fill in the pre-release label (`beta.1`). Pre-releases are not installed by default; testers can install one with `WHALEDOC_VERSION=1.5.0-beta.1`.
+
+The workflow calculates the next version from the latest release tag, builds and tests every platform, and only then creates the tag and a GitHub release with the executables, a `checksums.txt` file, the install scripts and generated release notes.
+
+You can also release a specific version by pushing its tag:
+
+```sh
+git tag v1.2.3
+git push origin v1.2.3
+```
+
+The version in `pom.xml` stays at `0.0.0-SNAPSHOT`; releases take their version from the tag.
 
 ## Contributing
 
