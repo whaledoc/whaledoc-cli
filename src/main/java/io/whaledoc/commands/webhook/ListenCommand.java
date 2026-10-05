@@ -3,6 +3,7 @@ package io.whaledoc.commands.webhook;
 import io.whaledoc.config.ConfigManager;
 import io.whaledoc.config.WhaleDocConfig;
 import io.whaledoc.exceptions.ApiException;
+import io.whaledoc.exceptions.ForwardException;
 import io.whaledoc.http.SseConnection;
 import io.whaledoc.http.SseEvent;
 import io.whaledoc.webhook.WebhookClient;
@@ -10,8 +11,11 @@ import io.whaledoc.webhook.WebhookEvents;
 import lombok.extern.slf4j.Slf4j;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
+import picocli.CommandLine.Model.CommandSpec;
 import picocli.CommandLine.Option;
+import picocli.CommandLine.Spec;
 
+import java.net.URI;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
@@ -63,9 +67,14 @@ public class ListenCommand implements Callable<Integer> {
     @Option(
             names = {"-f", "--forward-to"},
             paramLabel = "string",
-            description = "The URL to forward webhook events to."
+            description = "The URL to forward webhook events to, e.g. localhost:8080/events (http:// is assumed)."
     )
     private String forwardTo;
+
+    @Spec
+    private CommandSpec spec;
+
+    private URI forwardTarget;
 
     public ListenCommand(ConfigManager configManager, WebhookClient webhookClient) {
         this.configManager = configManager;
@@ -83,6 +92,7 @@ public class ListenCommand implements Callable<Integer> {
         }
 
         Set<String> eventFilter = resolveEvents();
+        forwardTarget = resolveForwardTarget();
 
         SseConnection connection = webhookClient.listen(
                 config.accessToken(),
@@ -92,8 +102,8 @@ public class ListenCommand implements Callable<Integer> {
 
         Runtime.getRuntime().addShutdownHook(new Thread(connection::close));
 
-        if (forwardTo != null && !forwardTo.isBlank()) {
-            System.out.println("Forwarding events to " + forwardTo);
+        if (forwardTarget != null) {
+            System.out.println("Forwarding events to " + forwardTarget);
         }
 
         System.out.println();
@@ -138,7 +148,7 @@ public class ListenCommand implements Callable<Integer> {
 
         if (!invalidEvents.isEmpty()) {
             throw new CommandLine.ParameterException(
-                    new CommandLine(this),
+                    spec.commandLine(),
                     "Unknown event(s): " + String.join(", ", invalidEvents)
             );
         }
@@ -146,18 +156,44 @@ public class ListenCommand implements Callable<Integer> {
         return requestedEvents;
     }
 
+    private URI resolveForwardTarget() {
+
+        if (forwardTo == null || forwardTo.isBlank()) {
+            return null;
+        }
+
+        try {
+            return WebhookClient.parseForwardUrl(forwardTo);
+
+        } catch (IllegalArgumentException e) {
+            throw new CommandLine.ParameterException(spec.commandLine(), e.getMessage());
+        }
+    }
+
     private void handleEvent(SseEvent event) {
+
         String timestamp = LocalDateTime.now().format(TIMESTAMP_FORMAT);
 
-        if (forwardTo != null && !forwardTo.isBlank()) {
-            webhookClient.forward(forwardTo, event);
-            System.out.println(timestamp + "  --> " + event.event());
+        if (forwardTarget != null) {
+            forwardEvent(timestamp, event);
             return;
         }
 
         System.out.println();
         System.out.println(timestamp + "  --> " + event.event());
         System.out.println(event.data());
+    }
 
+    // A failing local endpoint is reported per event; listening continues for the next one
+    private void forwardEvent(String timestamp, SseEvent event) {
+
+        try {
+            int status = webhookClient.forward(forwardTarget, event);
+            System.out.println("%s  --> %s [%d]".formatted(timestamp, event.event(), status));
+
+        } catch (ForwardException e) {
+            log.warn("Forwarding {} failed", event.event(), e);
+            System.out.println("%s  --> %s ! %s".formatted(timestamp, event.event(), e.getMessage()));
+        }
     }
 }

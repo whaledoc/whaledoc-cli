@@ -3,6 +3,7 @@ package io.whaledoc.webhook;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.tomakehurst.wiremock.junit5.WireMockRuntimeInfo;
 import com.github.tomakehurst.wiremock.junit5.WireMockTest;
+import io.whaledoc.exceptions.ForwardException;
 import io.whaledoc.http.ApiClient;
 import io.whaledoc.http.SseClient;
 import io.whaledoc.http.SseConnection;
@@ -11,6 +12,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.net.URI;
 import java.net.http.HttpClient;
 import java.util.List;
 import java.util.Set;
@@ -60,33 +62,80 @@ class WebhookClientTest {
     }
 
     @Test
-    void shouldPostEventDataWhenForwardingEvent() {
+    void shouldPostEventWithEventHeadersWhenForwardingEvent() {
 
         // given
         stubFor(post(urlEqualTo("/events")).willReturn(ok()));
 
         // when
-        webhookClient.forward(baseUrl + "/events", CREATED_EVENT);
+        int status = webhookClient.forward(URI.create(baseUrl + "/events"), CREATED_EVENT);
 
         // then
+        assertThat(status).isEqualTo(200);
         verify(postRequestedFor(urlEqualTo("/events"))
                 .withHeader("Content-Type", equalTo("application/json"))
+                .withHeader("WhaleDoc-Event", equalTo("document.created"))
+                .withHeader("WhaleDoc-Event-Id", equalTo("1"))
                 .withRequestBody(equalToJson(CREATED_EVENT.data())));
     }
 
     @Test
-    void shouldThrowExceptionWhenForwardTargetRespondsWithError() {
+    void shouldThrowForwardExceptionWhenForwardTargetRespondsWithError() {
 
         // given
         stubFor(post(urlEqualTo("/events")).willReturn(serverError()));
+        URI target = URI.create(baseUrl + "/events");
 
         // when
-        Throwable thrown = catchThrowable(() -> webhookClient.forward(baseUrl + "/events", CREATED_EVENT));
+        Throwable thrown = catchThrowable(() -> webhookClient.forward(target, CREATED_EVENT));
 
         // then
         assertThat(thrown)
-                .isInstanceOf(RuntimeException.class)
-                .hasRootCauseMessage("Forwarding webhook event failed with status 500");
+                .isInstanceOf(ForwardException.class)
+                .hasMessage(target + " responded with HTTP 500");
+    }
+
+    @Test
+    void shouldThrowForwardExceptionWhenForwardTargetIsUnreachable() {
+
+        // given
+        URI target = URI.create("http://localhost:1/events");
+
+        // when
+        Throwable thrown = catchThrowable(() -> webhookClient.forward(target, CREATED_EVENT));
+
+        // then
+        assertThat(thrown)
+                .isInstanceOf(ForwardException.class)
+                .hasMessage("Unable to reach " + target);
+    }
+
+    @Test
+    void shouldDefaultToHttpWhenForwardUrlHasNoScheme() {
+
+        // given
+        String value = "localhost:8080/events";
+
+        // when
+        URI actual = WebhookClient.parseForwardUrl(value);
+
+        // then
+        assertThat(actual).isEqualTo(URI.create("http://localhost:8080/events"));
+    }
+
+    @Test
+    void shouldThrowIllegalArgumentExceptionWhenForwardUrlHasUnsupportedScheme() {
+
+        // given
+        String value = "file:///etc/passwd";
+
+        // when
+        Throwable thrown = catchThrowable(() -> WebhookClient.parseForwardUrl(value));
+
+        // then
+        assertThat(thrown)
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Invalid forward URL: " + value);
     }
 
     @Test
