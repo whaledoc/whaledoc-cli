@@ -14,6 +14,8 @@
         <maven.compiler.target>25</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <whaledoc.api.url>https://api.whaledoc.io</whaledoc.api.url>
+        <!-- Where `whaledoc update` downloads releases from: {url}/latest/download/version.txt and {url}/download/v{version}/{file} -->
+        <whaledoc.releases.url>https://github.com/whaledoc/whaledoc-cli/releases</whaledoc.releases.url>
         <picocli.version>4.7.7</picocli.version>
         <lombok.version>1.18.48</lombok.version>
         <jackson.version>2.22.3</jackson.version>
