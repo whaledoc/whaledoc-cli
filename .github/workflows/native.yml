@@ -84,6 +84,44 @@ jobs:
             tar -czf "dist/whaledoc-${{ matrix.target }}.tar.gz" -C target whaledoc
           fi
 
+      - name: Build Windows installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          $iscc = Get-ChildItem "${env:ProgramFiles(x86)}\Inno Setup*\ISCC.exe", "$env:ProgramFiles\Inno Setup*\ISCC.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $iscc) { throw "ISCC.exe not found" }
+
+          # Quoted: PowerShell would otherwise split the argument at the dot
+          $version = ./mvnw.cmd -B -q help:evaluate "-Dexpression=project.version" -DforceStdout
+          $fileVersion = ($version -split '-')[0]
+          & $iscc.FullName "/DAppVersion=$version" "/DFileVersion=$fileVersion" packaging\windows\whaledoc.iss
+          if ($LASTEXITCODE -ne 0) { throw "Installer build failed" }
+
+      - name: Test Windows installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $dir = "$env:LOCALAPPDATA\Programs\whaledoc"
+
+          Start-Process dist\whaledoc-setup-x64.exe -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait
+          & "$dir\whaledoc.exe" --version
+          if ($LASTEXITCODE -ne 0) { throw "Installed executable does not run" }
+
+          $userPath = [Environment]::GetEnvironmentVariable('Path', 'User') -split ';'
+          if ($userPath -notcontains $dir) { throw "Installer did not add $dir to PATH" }
+
+          # The uninstaller relaunches itself from a temporary copy and returns early, so poll until it is done
+          Start-Process "$dir\unins000.exe" -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES' -Wait
+          $isUninstalled = {
+              -not (Test-Path "$dir\whaledoc.exe") -and
+              (([Environment]::GetEnvironmentVariable('Path', 'User') -split ';') -notcontains $dir)
+          }
+          for ($i = 0; $i -lt 30 -and -not (& $isUninstalled); $i++) { Start-Sleep -Seconds 1 }
+          if (-not (& $isUninstalled)) { throw "Uninstaller did not remove whaledoc.exe and its PATH entry" }
+
+          Write-Host "Installer installs, adds to PATH and uninstalls cleanly"
+
       - uses: actions/upload-artifact@v7
         with:
           name: whaledoc-${{ matrix.target }}

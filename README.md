@@ -26,13 +26,15 @@ The script downloads the right binary for your system, verifies its checksum, in
 
 ### Windows
 
-Run in PowerShell:
+Download **[whaledoc-setup-x64.exe](https://github.com/whaledoc/whaledoc-cli/releases/latest/download/whaledoc-setup-x64.exe)** and run it. The installer doesn't need administrator rights, adds `whaledoc` to your `PATH`, and can be uninstalled from **Settings → Apps**. Open a new terminal afterwards.
+
+Or install from PowerShell:
 
 ```powershell
 irm https://github.com/whaledoc/whaledoc-cli/releases/latest/download/install.ps1 | iex
 ```
 
-The script installs `whaledoc.exe` to `%LOCALAPPDATA%\Programs\whaledoc` and adds it to your user `PATH`. Restart your terminal afterwards.
+Both install `whaledoc.exe` to `%LOCALAPPDATA%\Programs\whaledoc`.
 
 ### Verify the installation
 
@@ -189,7 +191,7 @@ whaledoc --version
 
 ## Upgrading
 
-Run the install command again. It replaces your current version with the latest release.
+Run the install command or the Windows installer again. It replaces your current version with the latest release.
 
 ## Uninstalling
 
@@ -205,7 +207,9 @@ Then remove the `# WhaleDoc CLI` line the installer added to your shell profile 
 
 ### Windows
 
-Delete the install directory and remove it from your user `PATH`:
+If you used the installer, uninstall **WhaleDoc CLI** from **Settings → Apps → Installed apps**. This also removes it from your `PATH`.
+
+If you used the PowerShell script, delete the install directory and remove it from your user `PATH`:
 
 ```powershell
 Remove-Item -Recurse "$env:LOCALAPPDATA\Programs\whaledoc"
