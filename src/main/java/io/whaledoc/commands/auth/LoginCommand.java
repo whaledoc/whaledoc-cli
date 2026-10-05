@@ -2,34 +2,40 @@ package io.whaledoc.commands.auth;
 
 import io.whaledoc.auth.AuthClient;
 import io.whaledoc.auth.AuthSession;
-import io.whaledoc.exceptions.ApiException;
-import io.whaledoc.utility.Spinner;
 import io.whaledoc.config.ConfigManager;
 import io.whaledoc.config.WhaleDocConfig;
+import io.whaledoc.exceptions.ApiException;
+import io.whaledoc.utility.BrowserLauncher;
+import io.whaledoc.utility.Spinner;
 import lombok.extern.slf4j.Slf4j;
 import picocli.CommandLine.Command;
 
-import java.awt.*;
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
+import java.io.InputStream;
 import java.net.URI;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeoutException;
 
 @Slf4j
 @Command(
         name = "login",
-        description = "Log in to your WhaleDoc account"
+        mixinStandardHelpOptions = true,
+        description = "Log in to your WhaleDoc account."
 )
 public class LoginCommand implements Callable<Integer> {
 
     private final ConfigManager configManager;
     private final AuthClient authClient;
+    private final BrowserLauncher browserLauncher;
+    private final InputStream input;
 
-    public LoginCommand(ConfigManager configManager, AuthClient authClient) {
+    public LoginCommand(ConfigManager configManager, AuthClient authClient, BrowserLauncher browserLauncher, InputStream input) {
         this.configManager = configManager;
         this.authClient = authClient;
+        this.browserLauncher = browserLauncher;
+        this.input = input;
     }
 
     @Override
@@ -37,72 +43,88 @@ public class LoginCommand implements Callable<Integer> {
 
         WhaleDocConfig config = configManager.load();
 
-        log.debug(
-                "Starting authentication for CLI {}",
-                config.cliId()
-        );
-
-        Spinner spinner = new Spinner("Awaiting authentication...");
         try {
-           AuthSession session = authClient.createSession(config.cliId());
+            AuthSession session = authClient.createSession(config.cliId());
+            CompletableFuture<String> accessToken = authClient.waitForAuthentication(session);
 
-            System.out.println("Your authentication code is: %s".formatted(session.authCode()));
-            System.out.println("This authentication code verifies your authentication with WhaleDoc.");
-            System.out.println("Press Enter to open the browser or visit: %s".formatted(session.authorizationUrl()));
-            System.out.println("\n(^C to quit)");
-
-            CompletableFuture<String> authentication = CompletableFuture.supplyAsync(
-                    () -> authClient.awaitAuthentication(session)
-            );
-
-            new BufferedReader(new InputStreamReader(System.in)).readLine();
-
-            if (!authentication.isDone()) {
-                Desktop.getDesktop().browse(session.authorizationUrl());
-            }
-
-            Desktop.getDesktop().browse(session.authorizationUrl());
-
-            spinner.start();
-
-            String accessToken = authClient.awaitAuthentication(session);
+            printInstructions(session);
+            openBrowserOnEnter(session.authorizationUrl(), accessToken);
 
             configManager.saveToFile(
                     WhaleDocConfig.builder()
                             .cliId(config.cliId())
-                            .accessToken(accessToken)
+                            .accessToken(awaitAccessToken(accessToken))
                             .build()
-
             );
-            spinner.stop();
 
             System.out.println("> Authenticated");
-
             return 0;
 
-        } catch (Exception e) {
-
-            spinner.stop();
-            log.error("! Authentication failed", e);
-            System.out.println("! Authentication failed");
-
+        } catch (ApiException e) {
+            log.error("Login failed", e);
+            System.out.println("! Login failed: " + e.getMessage());
             return 1;
         }
     }
 
-    private void openAuthorizationPage(URI authorizationUrl) {
+    private static void printInstructions(AuthSession session) {
 
-        if (!Desktop.isDesktopSupported()) {
-            throw new ApiException(
-                    "Unable to open the authorization page automatically. " +
-                    "Please open this URL manually: " + authorizationUrl
-            );
-        }
+        System.out.println("Your authentication code is: %s".formatted(session.authCode()));
+        System.out.println("This authentication code verifies your authentication with WhaleDoc.");
+        System.out.println("Press Enter to open the browser or visit: %s".formatted(session.authorizationUrl()));
+        System.out.println("\n(^C to quit)");
+    }
+
+    // Waits for Enter in the background, so a login approved through the printed URL finishes without it
+    private void openBrowserOnEnter(URI authorizationUrl, CompletableFuture<String> accessToken) {
+
+        Thread.ofVirtual().start(() -> {
+
+            if (waitForEnter() && !accessToken.isDone() && !browserLauncher.open(authorizationUrl)) {
+                System.out.println("! Unable to open a browser. Please visit: " + authorizationUrl);
+            }
+        });
+    }
+
+    private boolean waitForEnter() {
 
         try {
-            Desktop.getDesktop().browse(authorizationUrl);
+            return input.read() != -1;
         } catch (IOException e) {
-            throw new ApiException("Unable to open the authorization page. Please open this URL manually: " + authorizationUrl, e);
+            return false;
         }
+    }
+
+    private static String awaitAccessToken(CompletableFuture<String> accessToken) {
+
+        Spinner spinner = new Spinner("Awaiting authentication...");
+        spinner.start();
+
+        try {
+            return accessToken.get();
+
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ApiException("The login was interrupted.", e);
+
+        } catch (ExecutionException e) {
+            throw toApiException(e.getCause());
+
+        } finally {
+            spinner.stop();
+        }
+    }
+
+    private static ApiException toApiException(Throwable cause) {
+
+        if (cause instanceof ApiException apiException) {
+            return apiException;
+        }
+
+        if (cause instanceof TimeoutException) {
+            return new ApiException("The login was not approved within 5 minutes.");
+        }
+
+        return new ApiException("Authentication failed.", cause);
     }
 }

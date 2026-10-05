@@ -5,6 +5,7 @@ import io.whaledoc.commands.auth.LogoutCommand;
 import io.whaledoc.commands.update.UpdateCommand;
 import io.whaledoc.commands.webhook.ListenCommand;
 import io.whaledoc.update.Version;
+import io.whaledoc.utility.BrowserLauncher;
 import io.whaledoc.utility.VersionProvider;
 import picocli.CommandLine;
 
@@ -24,7 +25,7 @@ public final class CommandFactory implements CommandLine.IFactory {
     public CommandFactory(ApplicationContext context) {
 
         this.factories = Map.of(
-                LoginCommand.class, () -> new LoginCommand(context.configManager(), context.authClient()),
+                LoginCommand.class, () -> new LoginCommand(context.configManager(), context.authClient(), new BrowserLauncher(), System.in),
                 LogoutCommand.class, () -> new LogoutCommand(context.configManager(), context.authClient()),
                 ListenCommand.class, () -> new ListenCommand(context.configManager(), context.webhookClient()),
                 UpdateCommand.class, () -> new UpdateCommand(context.updateService(), Version.parse(context.config().version())),
