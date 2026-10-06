@@ -258,7 +258,14 @@ $path = ([Environment]::GetEnvironmentVariable('Path', 'User') -split ';' | Wher
 [Environment]::SetEnvironmentVariable('Path', $path, 'User')
 ```
 
-**macOS and Linux:**
+**macOS and Linux, installed with Homebrew:**
+
+```sh
+brew uninstall whaledoc
+brew untap whaledoc/tap
+```
+
+**macOS and Linux, installed with the install script:**
 
 ```sh
 rm -rf ~/.whaledoc
