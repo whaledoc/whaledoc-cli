@@ -6,8 +6,10 @@ import io.whaledoc.console.Console;
 import io.whaledoc.console.Spinner;
 import io.whaledoc.exceptions.ApiException;
 import io.whaledoc.exceptions.ForwardException;
+import io.whaledoc.http.Reconnect;
 import io.whaledoc.http.SseConnection;
 import io.whaledoc.http.SseEvent;
+import io.whaledoc.http.SseListener;
 import io.whaledoc.webhook.WebhookClient;
 import io.whaledoc.webhook.WebhookEvents;
 import lombok.extern.slf4j.Slf4j;
@@ -78,6 +80,7 @@ public class ListenCommand implements Callable<Integer> {
     private CommandSpec spec;
 
     private URI forwardTarget;
+    private boolean listening;
 
     public ListenCommand(ConfigManager configManager, WebhookClient webhookClient, Console console) {
         this.configManager = configManager;
@@ -99,11 +102,12 @@ public class ListenCommand implements Callable<Integer> {
         Set<String> eventFilter = resolveEvents();
         forwardTarget = resolveForwardTarget();
 
-        SseConnection connection = webhookClient.listen(config.accessToken(), eventFilter, this::handleEvent);
+        SseConnection connection = webhookClient.listen(config.accessToken(), eventFilter, new ListenListener());
         Runtime.getRuntime().addShutdownHook(new Thread(connection::close));
 
         try {
             if (awaitConnected(connection)) {
+                listening = true;
                 printReady();
             }
 
@@ -166,7 +170,28 @@ public class ListenCommand implements Callable<Integer> {
             return "Your login is no longer valid. Run " + console.bold("whaledoc login") + " and try again.";
         }
 
-        return "Stopped listening: " + e.getMessage();
+        // Before "Ready!" the reason alone says it all, e.g. "Unable to find api.whaledoc.io."
+        return listening ? "Stopped listening: " + e.getMessage() : e.getMessage();
+    }
+
+    private final class ListenListener implements SseListener {
+
+        @Override
+        public void onEvent(SseEvent event) {
+            handleEvent(event);
+        }
+
+        @Override
+        public void onReconnecting(Reconnect reconnect) {
+
+            console.warning("Connection lost. Reconnecting in %ds (attempt %d of %d)...".formatted(
+                    reconnect.delay().toSeconds(), reconnect.attempt(), reconnect.maxAttempts()));
+        }
+
+        @Override
+        public void onReconnected() {
+            console.success("Reconnected");
+        }
     }
 
     private Set<String> resolveEvents() {

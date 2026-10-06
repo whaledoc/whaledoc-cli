@@ -107,7 +107,7 @@ class WebhookClientTest {
         // then
         assertThat(thrown)
                 .isInstanceOf(ForwardException.class)
-                .hasMessage("Unable to reach " + target);
+                .hasMessage("Unable to connect to localhost:1. Is the server running?");
     }
 
     @Test

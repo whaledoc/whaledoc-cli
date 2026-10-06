@@ -14,19 +14,18 @@ import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.concurrent.ThreadFactory;
-import java.util.function.Consumer;
 
 /**
- * Connects to server-sent event streams and keeps them open, reconnecting with backoff when
- * the connection drops. Each stream is read on its own virtual thread.
+ * Connects to server-sent event streams and keeps them open. Each stream is read on its own virtual thread.
+ *
+ * <p>The first connection fails fast after a few quick attempts, because a server that can't be reached
+ * at startup usually stays unreachable. Once a stream has been open, a dropped connection is retried
+ * for longer with exponential backoff, and the listener is told about each attempt.
  */
 @Slf4j
 public final class SseClient {
 
     private static final String SSE_MEDIA_TYPE = "text/event-stream";
-    private static final long INITIAL_RECONNECT_DELAY_MILLIS = 1_000;
-    private static final long MAX_RECONNECT_DELAY_MILLIS = 30_000;
-    private static final int MAX_RECONNECT_ATTEMPTS = 10;
 
     private final HttpClient httpClient;
     private final ThreadFactory threadFactory;
@@ -39,29 +38,29 @@ public final class SseClient {
                 .factory();
     }
 
-    public SseConnection connect(URI uri, Consumer<SseEvent> eventConsumer) {
-        return connect(uri, null, eventConsumer);
+    public SseConnection connect(URI uri, SseListener listener) {
+        return connect(uri, null, listener);
     }
 
-    public SseConnection connect(URI uri, String accessToken, Consumer<SseEvent> eventConsumer) {
+    public SseConnection connect(URI uri, String accessToken, SseListener listener) {
 
         Objects.requireNonNull(uri, "uri must not be null");
-        Objects.requireNonNull(eventConsumer, "eventConsumer must not be null");
+        Objects.requireNonNull(listener, "listener must not be null");
 
         HttpRequest.Builder request = newRequest(uri, accessToken);
         SseConnection connection = new SseConnection();
 
-        Thread readerThread = threadFactory.newThread(() -> run(request, connection, eventConsumer));
+        Thread readerThread = threadFactory.newThread(() -> run(request, connection, listener));
         connection.setReaderThread(readerThread);
         readerThread.start();
 
         return connection;
     }
 
-    private void run(HttpRequest.Builder request, SseConnection connection, Consumer<SseEvent> eventConsumer) {
+    private void run(HttpRequest.Builder request, SseConnection connection, SseListener listener) {
 
         try {
-            readUntilClosed(request, connection, eventConsumer);
+            readUntilClosed(request, connection, listener);
 
         } catch (ApiException e) {
             connection.fail(e);
@@ -71,30 +70,25 @@ public final class SseClient {
         }
     }
 
-    private void readUntilClosed(HttpRequest.Builder request, SseConnection connection, Consumer<SseEvent> eventConsumer) {
+    private void readUntilClosed(HttpRequest.Builder request, SseConnection connection, SseListener listener) {
 
-        SseEventReader reader = new SseEventReader(event -> dispatch(event, eventConsumer));
-        long reconnectDelay = INITIAL_RECONNECT_DELAY_MILLIS;
-        int failedAttempts = 0;
-        ApiException lastError = null;
+        SseEventReader reader = new SseEventReader(event -> dispatch(event, listener));
+        Backoff backoff = new Backoff();
 
         while (connection.isOpen()) {
 
+            ApiException dropReason;
+
             try {
-                HttpResponse<InputStream> response = httpClient.send(
-                        resumeFrom(request, reader.lastEventId()),
-                        HttpResponse.BodyHandlers.ofInputStream()
-                );
+                HttpRequest attempt = resumeFrom(request, reader.lastEventId());
+                HttpResponse<InputStream> response = httpClient.send(attempt, HttpResponse.BodyHandlers.ofInputStream());
 
                 validateResponse(response);
                 connection.setInputStream(response.body());
-                connection.markConnected();
-
-                // Connected: a later reconnect starts from the beginning of the backoff sequence
-                failedAttempts = 0;
-                reconnectDelay = INITIAL_RECONNECT_DELAY_MILLIS;
+                onConnected(connection, backoff, listener);
 
                 reader.read(response.body(), connection::isOpen);
+                dropReason = null;
 
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -106,7 +100,7 @@ public final class SseClient {
                     throw e;
                 }
 
-                lastError = e;
+                dropReason = e;
 
             } catch (IOException e) {
 
@@ -114,26 +108,62 @@ public final class SseClient {
                     return;
                 }
 
-                lastError = new ApiException("Lost connection to WhaleDoc.", e);
+                URI uri = request.copy().build().uri();
+                dropReason = new ApiException(NetworkErrors.describe(uri, e), e);
             }
 
-            if (++failedAttempts >= MAX_RECONNECT_ATTEMPTS) {
-                throw new ApiException("Unable to connect to WhaleDoc after %d attempts.".formatted(MAX_RECONNECT_ATTEMPTS), lastError);
-            }
-
-            if (!sleep(reconnectDelay)) {
+            if (!connection.isOpen() || !waitBeforeRetry(backoff, dropReason, listener)) {
                 return;
             }
-
-            reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY_MILLIS);
         }
     }
 
+    private static void onConnected(SseConnection connection, Backoff backoff, SseListener listener) {
+
+        boolean reconnected = backoff.hasConnectedBefore();
+
+        backoff.connected();
+        connection.markConnected();
+
+        if (reconnected) {
+            listener.onReconnected();
+        }
+    }
+
+    /**
+     * @return false when interrupted while waiting, i.e. when the connection was closed
+     * @throws ApiException when there are no attempts left
+     */
+    private static boolean waitBeforeRetry(Backoff backoff, ApiException dropReason, SseListener listener) {
+
+        if (!backoff.nextAttempt()) {
+            throw giveUp(backoff, dropReason);
+        }
+
+        // Before the first connection the caller is still showing "connecting", so only drops are reported
+        if (backoff.hasConnectedBefore()) {
+            listener.onReconnecting(new Reconnect(backoff.attempt(), backoff.maxAttempts(), backoff.delay(), dropReason));
+        }
+
+        return sleep(backoff.delay().toMillis());
+    }
+
+    private static ApiException giveUp(Backoff backoff, ApiException dropReason) {
+
+        String reason = dropReason == null ? "the server closed the connection." : dropReason.getMessage();
+
+        if (!backoff.hasConnectedBefore()) {
+            return dropReason != null ? dropReason : new ApiException("Unable to connect to WhaleDoc: " + reason);
+        }
+
+        return new ApiException("Lost the connection to WhaleDoc and couldn't reconnect: " + reason, dropReason);
+    }
+
     // A failing handler must not end the stream; the next events should still arrive
-    private static void dispatch(SseEvent event, Consumer<SseEvent> eventConsumer) {
+    private static void dispatch(SseEvent event, SseListener listener) {
 
         try {
-            eventConsumer.accept(event);
+            listener.onEvent(event);
         } catch (RuntimeException e) {
             log.warn("Handling event {} failed", event.event(), e);
         }

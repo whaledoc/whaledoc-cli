@@ -6,7 +6,9 @@ import io.whaledoc.console.TestConsole;
 import io.whaledoc.exceptions.ApiException;
 import io.whaledoc.exceptions.ForwardException;
 import io.whaledoc.http.SseConnection;
+import io.whaledoc.http.Reconnect;
 import io.whaledoc.http.SseEvent;
+import io.whaledoc.http.SseListener;
 import io.whaledoc.webhook.WebhookClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -18,9 +20,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import picocli.CommandLine;
 
 import java.net.URI;
+import java.time.Duration;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
@@ -48,7 +50,7 @@ class ListenCommandTest {
     private SseConnection connection;
 
     @Captor
-    private ArgumentCaptor<Consumer<SseEvent>> eventConsumer;
+    private ArgumentCaptor<SseListener> listenerCaptor;
 
     private final TestConsole testConsole = TestConsole.plain();
 
@@ -134,10 +136,10 @@ class ListenCommandTest {
     void shouldForwardEventWhenForwardUrlIsGiven() {
 
         // given
-        Consumer<SseEvent> handleEvent = givenListeningWithForwardUrl("localhost:8080/events");
+        SseListener listener = givenListeningWithForwardUrl("localhost:8080/events");
 
         // when
-        handleEvent.accept(EVENT);
+        listener.onEvent(EVENT);
 
         // then
         then(webhookClient).should().forward(URI.create(FORWARD_URL), EVENT);
@@ -163,25 +165,40 @@ class ListenCommandTest {
     void shouldPrintResponseStatusWhenEventIsForwarded() {
 
         // given
-        Consumer<SseEvent> handleEvent = givenListeningWithForwardUrl(FORWARD_URL);
+        SseListener listener = givenListeningWithForwardUrl(FORWARD_URL);
         given(webhookClient.forward(URI.create(FORWARD_URL), EVENT)).willReturn(200);
 
         // when
-        handleEvent.accept(EVENT);
+        listener.onEvent(EVENT);
 
         // then
         assertThat(testConsole.output()).containsPattern("-> document\\.created +\\[200]");
     }
 
     @Test
+    void shouldTellUserWhenConnectionDropsAndIsRestored() {
+
+        // given
+        SseListener listener = givenListeningWithForwardUrl(FORWARD_URL);
+
+        // when
+        listener.onReconnecting(new Reconnect(3, 10, Duration.ofSeconds(4), null));
+        listener.onReconnected();
+
+        // then
+        assertThat(testConsole.errors()).isEqualToIgnoringNewLines("! Connection lost. Reconnecting in 4s (attempt 3 of 10)...");
+        assertThat(testConsole.output()).endsWith("+ Reconnected" + System.lineSeparator());
+    }
+
+    @Test
     void shouldKeepListeningWhenForwardingEventFails() {
 
         // given
-        Consumer<SseEvent> handleEvent = givenListeningWithForwardUrl(FORWARD_URL);
+        SseListener listener = givenListeningWithForwardUrl(FORWARD_URL);
         given(webhookClient.forward(any(), any())).willThrow(new ForwardException("Unable to reach " + FORWARD_URL));
 
         // when
-        Throwable thrown = catchThrowable(() -> handleEvent.accept(EVENT));
+        Throwable thrown = catchThrowable(() -> listener.onEvent(EVENT));
 
         // then
         assertThat(thrown).isNull();
@@ -202,13 +219,13 @@ class ListenCommandTest {
     }
 
     // Runs the command and returns the handler it registered for incoming events
-    private Consumer<SseEvent> givenListeningWithForwardUrl(String forwardUrl) {
+    private SseListener givenListeningWithForwardUrl(String forwardUrl) {
 
         givenUserIsLoggedInAndListening();
         commandLine.execute("--forward-to", forwardUrl);
-        then(webhookClient).should().listen(eq(ACCESS_TOKEN), anySet(), eventConsumer.capture());
+        then(webhookClient).should().listen(eq(ACCESS_TOKEN), anySet(), listenerCaptor.capture());
 
-        return eventConsumer.getValue();
+        return listenerCaptor.getValue();
     }
 
     private void givenUserIsLoggedInAndListening() {
