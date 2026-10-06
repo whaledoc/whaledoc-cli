@@ -4,6 +4,7 @@ import io.whaledoc.commands.auth.LoginCommand;
 import io.whaledoc.commands.auth.LogoutCommand;
 import io.whaledoc.commands.update.UpdateCommand;
 import io.whaledoc.commands.webhook.ListenCommand;
+import io.whaledoc.config.AppDirectories;
 import io.whaledoc.update.UpdateService;
 import io.whaledoc.utility.VersionProvider;
 import picocli.CommandLine;
@@ -35,6 +36,8 @@ import static picocli.CommandLine.*;
 )
 public class WhaleDocCli implements Runnable {
 
+    private static final String LOG_DIRECTORY_PROPERTY = "whaledoc.log.dir";
+
     @Spec
     CommandSpec spec;
 
@@ -53,6 +56,9 @@ public class WhaleDocCli implements Runnable {
     boolean version;
 
     public static void main(String... args) {
+
+        // Must run before anything logs: logback.xml reads the log directory when logging starts
+        System.setProperty(LOG_DIRECTORY_PROPERTY, AppDirectories.forCurrentUser().logs().toString());
 
         UpdateService.cleanUpPreviousVersion();
 

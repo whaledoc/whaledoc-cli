@@ -1,0 +1,6 @@
+<configuration>
+
+    <!-- Tests deliberately trigger errors; keep them out of the developer's real log files -->
+    <root level="OFF"/>
+
+</configuration>
