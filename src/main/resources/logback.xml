@@ -1,6 +1,7 @@
 <configuration>
 
-    <property name="LOG_DIR" value="${user.home}/.whaledoc/logs"/>
+    <!-- Set at startup to the operating system's standard log location (see AppDirectories) -->
+    <property name="LOG_DIR" value="${whaledoc.log.dir:-${user.home}/.whaledoc/logs}"/>
     <property name="LOG_FILE" value="${LOG_DIR}/error.log"/>
 
     <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">

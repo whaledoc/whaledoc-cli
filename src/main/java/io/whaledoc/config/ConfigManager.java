@@ -16,7 +16,6 @@ import java.util.UUID;
 @Slf4j
 public final class ConfigManager {
 
-    private static final String APP_NAME = "WhaleDoc";
     private static final String CONFIG_FILE_NAME = "config.json";
     private static final Set<PosixFilePermission> OWNER_READ_WRITE = PosixFilePermissions.fromString("rw-------");
 
@@ -32,7 +31,7 @@ public final class ConfigManager {
     }
 
     public static ConfigManager forCurrentUser(ObjectMapper objectMapper) {
-        return new ConfigManager(objectMapper, resolveConfigDirectory());
+        return new ConfigManager(objectMapper, AppDirectories.forCurrentUser().config());
     }
 
     public WhaleDocConfig load() {
@@ -91,36 +90,5 @@ public final class ConfigManager {
 
         // Also tightens config files created by earlier versions
         Files.setPosixFilePermissions(configFile, OWNER_READ_WRITE);
-    }
-
-    private static Path resolveConfigDirectory() {
-
-        String os = System.getProperty("os.name").toLowerCase();
-
-        if (os.contains("win")) {
-            String appData = System.getenv("APPDATA");
-
-            if (appData == null || appData.isBlank()) {
-                throw new ConfigException("APPDATA environment variable is not available.");
-            }
-
-            return Path.of(appData, APP_NAME);
-        }
-
-        if (os.contains("mac")) {
-            return Path.of(System.getProperty("user.home"), ".config", "whaledoc");
-        }
-
-        if (os.contains("linux")) {
-            String xdgConfigHome = System.getenv("XDG_CONFIG_HOME");
-
-            if (xdgConfigHome != null && !xdgConfigHome.isBlank()) {
-                return Path.of(xdgConfigHome, "whaledoc");
-            }
-
-            return Path.of(System.getProperty("user.home"), ".config", "whaledoc");
-        }
-
-        throw new ConfigException("Unsupported operating system: " + os);
     }
 }
