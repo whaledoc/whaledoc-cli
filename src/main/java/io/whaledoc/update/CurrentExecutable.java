@@ -18,6 +18,14 @@ public final class CurrentExecutable {
         return "runtime".equals(System.getProperty("org.graalvm.nativeimage.imagecode"));
     }
 
+    /**
+     * Homebrew keeps installed formulas under a Cellar directory, e.g. /opt/homebrew/Cellar/whaledoc/1.2.0/bin.
+     * Those installations must be updated through Homebrew, or it loses track of the installed version.
+     */
+    public static boolean isManagedByHomebrew(Path executable) {
+        return executable.toString().replace('\\', '/').contains("/Cellar/");
+    }
+
     public static Path path() {
 
         String command = ProcessHandle.current()

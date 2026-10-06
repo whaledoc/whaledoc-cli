@@ -10,6 +10,7 @@ import lombok.extern.slf4j.Slf4j;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
+import java.nio.file.Path;
 import java.util.concurrent.Callable;
 
 @Slf4j
@@ -52,15 +53,25 @@ public class UpdateCommand implements Callable<Integer> {
                 return 0;
             }
 
+            Path executable = CurrentExecutable.path();
+            boolean homebrew = CurrentExecutable.isManagedByHomebrew(executable);
+            String updateCommand = homebrew ? "brew upgrade whaledoc" : "whaledoc update";
+
             if (checkOnly) {
-                console.println("A new version is available: %s %s %s".formatted(
-                        currentVersion, console.arrow(), console.bold(console.brand(latestVersion.toString()))));
-                console.println("Run " + console.bold("whaledoc update") + " to install it.");
+                printUpdateAvailable(latestVersion);
+                console.println("Run " + console.bold(updateCommand) + " to install it.");
                 return 0;
             }
 
+            // Updating behind Homebrew's back would leave it with a wrong record of the installed version
+            if (homebrew) {
+                printUpdateAvailable(latestVersion);
+                console.warning("WhaleDoc CLI was installed with Homebrew. Run " + console.bold(updateCommand) + " to update it.");
+                return 1;
+            }
+
             withSpinner("Updating to %s...".formatted(latestVersion), () -> {
-                updateService.install(latestVersion, CurrentExecutable.path());
+                updateService.install(latestVersion, executable);
                 return latestVersion;
             });
 
@@ -73,6 +84,12 @@ public class UpdateCommand implements Callable<Integer> {
             console.error("Update failed: " + e.getMessage());
             return 1;
         }
+    }
+
+    private void printUpdateAvailable(Version latestVersion) {
+
+        console.println("A new version is available: %s %s %s".formatted(
+                currentVersion, console.arrow(), console.bold(console.brand(latestVersion.toString()))));
     }
 
     private <T> T withSpinner(String message, Callable<T> action) {
