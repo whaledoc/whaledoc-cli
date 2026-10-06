@@ -224,21 +224,21 @@ If the CLI is installed in a system directory such as `/usr/local/bin`, run `sud
 
 ## Uninstalling
 
-### macOS / Linux
+Uninstalling intentionally keeps your login and settings, so reinstalling or upgrading doesn't log you out. Steps 1 and 3 are only needed if you want to remove everything.
 
-Delete the executable:
+### 1. Log out (optional)
+
+Run this while the CLI is still installed, so your login is also ended on WhaleDoc's side:
 
 ```sh
-rm -rf ~/.whaledoc/bin
+whaledoc logout
 ```
 
-Then remove the `# WhaleDoc CLI` line the installer added to your shell profile (`~/.zshrc`, `~/.bashrc`, `~/.config/fish/config.fish` or `~/.profile`).
+### 2. Remove the CLI
 
-### Windows
+**Windows, installed with the installer:** uninstall **WhaleDoc CLI** from **Settings → Apps → Installed apps**. This also removes it from your `PATH`.
 
-If you used the installer, uninstall **WhaleDoc CLI** from **Settings → Apps → Installed apps**. This also removes it from your `PATH`.
-
-If you used the PowerShell script, delete the install directory and remove it from your user `PATH`:
+**Windows, installed with the PowerShell script:**
 
 ```powershell
 Remove-Item -Recurse "$env:LOCALAPPDATA\Programs\whaledoc"
@@ -246,15 +246,41 @@ $path = ([Environment]::GetEnvironmentVariable('Path', 'User') -split ';' | Wher
 [Environment]::SetEnvironmentVariable('Path', $path, 'User')
 ```
 
-### Configuration and logs
+**macOS and Linux:**
 
-Uninstalling does not remove your WhaleDoc configuration, credentials or logs. To remove them too, delete:
+```sh
+rm -rf ~/.whaledoc
+```
 
-| Platform | Configuration | Logs |
+Then remove the `# WhaleDoc CLI` line the installer added to your shell profile (`~/.zshrc`, `~/.bashrc`, `~/.config/fish/config.fish` or `~/.profile`).
+
+### 3. Delete settings and logs (optional)
+
+**Windows:**
+
+```powershell
+Remove-Item -Recurse -Force "$env:APPDATA\WhaleDoc", "$env:LOCALAPPDATA\WhaleDoc", "$HOME\.whaledoc" -ErrorAction SilentlyContinue
+```
+
+**macOS:**
+
+```sh
+rm -rf ~/.config/whaledoc ~/Library/Logs/WhaleDoc
+```
+
+**Linux:**
+
+```sh
+rm -rf "${XDG_CONFIG_HOME:-$HOME/.config}/whaledoc" "${XDG_STATE_HOME:-$HOME/.local/state}/whaledoc"
+```
+
+The CLI keeps its files in each operating system's standard locations:
+
+| Platform | Settings and login | Logs |
 |---|---|---|
-| macOS | `~/.config/whaledoc` | `~/.whaledoc/logs` |
-| Linux | `$XDG_CONFIG_HOME/whaledoc` or `~/.config/whaledoc` | `~/.whaledoc/logs` |
-| Windows | `%APPDATA%\WhaleDoc` | `%USERPROFILE%\.whaledoc\logs` |
+| Windows | `%APPDATA%\WhaleDoc` | `%LOCALAPPDATA%\WhaleDoc\logs` |
+| macOS | `~/.config/whaledoc` | `~/Library/Logs/WhaleDoc` |
+| Linux | `$XDG_CONFIG_HOME/whaledoc` (default `~/.config/whaledoc`) | `$XDG_STATE_HOME/whaledoc/logs` (default `~/.local/state/whaledoc/logs`) |
 
 ## Documentation
 
