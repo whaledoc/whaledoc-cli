@@ -17,9 +17,12 @@ import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.absent;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
+import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
+import static com.github.tomakehurst.wiremock.client.WireMock.serviceUnavailable;
 import static com.github.tomakehurst.wiremock.client.WireMock.stubFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.unauthorized;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
+import static com.github.tomakehurst.wiremock.client.WireMock.verify;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @WireMockTest
@@ -164,6 +167,61 @@ class SseClientTest {
 
         // then
         assertThat(receivedEvent.get(5, TimeUnit.SECONDS).data()).isEqualTo("after reconnect");
+    }
+
+    @Test
+    void shouldGiveUpAfterThreeAttemptsWhenFirstConnectionKeepsFailing(WireMockRuntimeInfo wireMock) {
+
+        // given
+        stubFor(get(urlEqualTo("/events")).willReturn(serviceUnavailable()));
+
+        // when
+        connection = sseClient.connect(URI.create(wireMock.getHttpBaseUrl() + "/events"), event -> { });
+
+        // then
+        assertThat(connection.connected())
+                .failsWithin(TIMEOUT)
+                .withThrowableOfType(ExecutionException.class)
+                .havingCause()
+                .isInstanceOfSatisfying(ApiException.class, exception -> assertThat(exception.statusCode()).isEqualTo(503));
+        verify(3, getRequestedFor(urlEqualTo("/events")));
+    }
+
+    @Test
+    void shouldReportReconnectingAndReconnectedWhenStreamDrops(WireMockRuntimeInfo wireMock) {
+
+        // given
+        givenServerStreamsFromLastEventId();
+        CompletableFuture<Reconnect> reconnecting = new CompletableFuture<>();
+        CompletableFuture<Void> reconnected = new CompletableFuture<>();
+        Reconnect expectedReconnect = new Reconnect(1, 10, Duration.ofSeconds(1), null);
+
+        // when
+        connection = sseClient.connect(URI.create(wireMock.getHttpBaseUrl() + "/events"), createListener(reconnecting, reconnected));
+
+        // then
+        assertThat(reconnecting).succeedsWithin(TIMEOUT).usingRecursiveComparison().isEqualTo(expectedReconnect);
+        assertThat(reconnected).succeedsWithin(TIMEOUT);
+    }
+
+    private SseListener createListener(CompletableFuture<Reconnect> reconnecting, CompletableFuture<Void> reconnected) {
+
+        return new SseListener() {
+
+            @Override
+            public void onEvent(SseEvent event) {
+            }
+
+            @Override
+            public void onReconnecting(Reconnect reconnect) {
+                reconnecting.complete(reconnect);
+            }
+
+            @Override
+            public void onReconnected() {
+                reconnected.complete(null);
+            }
+        };
     }
 
     // The first connection ends after event 42; the reconnect must ask to continue after it

@@ -3,9 +3,11 @@ package io.whaledoc.webhook;
 import io.whaledoc.exceptions.ForwardException;
 import io.whaledoc.http.ApiClient;
 import io.whaledoc.http.ApiConstants;
+import io.whaledoc.http.NetworkErrors;
 import io.whaledoc.http.SseClient;
 import io.whaledoc.http.SseConnection;
 import io.whaledoc.http.SseEvent;
+import io.whaledoc.http.SseListener;
 import org.apache.commons.lang3.StringUtils;
 
 import java.io.IOException;
@@ -16,7 +18,6 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.Objects;
 import java.util.Set;
-import java.util.function.Consumer;
 
 public final class WebhookClient {
 
@@ -82,26 +83,24 @@ public final class WebhookClient {
             throw new ForwardException("Forwarding to %s was interrupted.".formatted(target), e);
 
         } catch (IOException e) {
-            throw new ForwardException("Unable to reach %s".formatted(target), e);
+            throw new ForwardException(NetworkErrors.describe(target, e), e);
         }
     }
 
-    public SseConnection listen(String accessToken, Set<String> events, Consumer<SseEvent> eventConsumer) {
+    public SseConnection listen(String accessToken, Set<String> events, SseListener listener) {
 
         if (StringUtils.isBlank(accessToken)) {
             throw new IllegalArgumentException("accessToken is required");
         }
 
         Objects.requireNonNull(events);
-        Objects.requireNonNull(eventConsumer);
+        Objects.requireNonNull(listener);
 
         URI uri = URI.create(apiClient.baseUrl() + ApiConstants.WEBHOOK_EVENTS);
 
-        return sseClient.connect(uri, accessToken, event -> {
-            if (events.contains(WebhookEvents.ALL) || events.contains(event.event())) {
-                eventConsumer.accept(event);
-            }
-        });
+        return sseClient.connect(uri, accessToken, listener.filter(
+                event -> events.contains(WebhookEvents.ALL) || events.contains(event.event())
+        ));
     }
 
     // Event type and ID headers let the local endpoint handle events like real webhook deliveries

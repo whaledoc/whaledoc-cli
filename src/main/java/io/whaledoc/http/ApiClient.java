@@ -80,7 +80,7 @@ public final class ApiClient {
             throw new ApiException("HTTP request was interrupted.", e);
 
         } catch (IOException e) {
-            throw new ApiException("Unable to reach WhaleDoc. Check your internet connection.", e);
+            throw new ApiException(NetworkErrors.describe(request.uri(), e), e);
         }
     }
 }
