@@ -3,6 +3,7 @@
 [![Build](https://github.com/whaledoc/whaledoc-cli/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/whaledoc/whaledoc-cli/actions/workflows/build.yml)
 ![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Linux%20%7C%20Windows-FBAA53)
 ![Native executable](https://img.shields.io/badge/native-GraalVM-FBAA53)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 
 The official command-line interface for [WhaleDoc](https://whaledoc.io).
 
@@ -370,8 +371,10 @@ The version in `pom.xml` stays at `0.0.0-SNAPSHOT`; releases take their version 
 
 Contributions and feedback are welcome.
 
-If you want to contribute code, documentation, or improvements to the CLI, please open an issue first to discuss the change or submit a pull request on GitHub.
+If you want to contribute code, documentation, or improvements to the CLI, please open an issue first to discuss the change or submit a pull request on GitHub. By submitting a contribution, you agree that it is licensed under the Apache License 2.0, as described in section 5 of the license.
 
 ## License
 
-Copyright © WhaleDoc. All rights reserved.
+WhaleDoc CLI is licensed under the [Apache License 2.0](LICENSE). Copyright 2026 WhaleDoc.
+
+The license covers the code, not the WhaleDoc name or logo; see [NOTICE](NOTICE).

@@ -9,6 +9,18 @@
     <!-- Development version. Releases set the real version from the git tag (see .github/workflows/release.yml) -->
     <version>0.0.0-SNAPSHOT</version>
 
+    <name>WhaleDoc CLI</name>
+    <description>The official command-line interface for WhaleDoc.</description>
+    <url>https://github.com/whaledoc/whaledoc-cli</url>
+
+    <licenses>
+        <license>
+            <name>Apache License, Version 2.0</name>
+            <url>https://www.apache.org/licenses/LICENSE-2.0</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+
     <properties>
         <maven.compiler.source>25</maven.compiler.source>
         <maven.compiler.target>25</maven.compiler.target>
