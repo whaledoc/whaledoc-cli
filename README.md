@@ -21,7 +21,13 @@ Use WhaleDoc CLI to authenticate, listen for webhook events, and forward events 
 
 WhaleDoc CLI is a single native executable for macOS (Intel and Apple Silicon), Linux (x64 and arm64), and Windows (x64). It does not require Java.
 
-### macOS and Linux
+### macOS and Linux with Homebrew
+
+```sh
+brew install whaledoc/tap/whaledoc
+```
+
+### macOS and Linux with the install script
 
 ```sh
 curl -fsSL https://github.com/whaledoc/whaledoc-cli/releases/latest/download/install.sh | bash
@@ -221,6 +227,12 @@ whaledoc update --check
 Running the install command or the Windows installer again also installs the latest version.
 
 If the CLI is installed in a system directory such as `/usr/local/bin`, run `sudo whaledoc update`.
+
+If you installed the CLI with Homebrew, update it with Homebrew instead:
+
+```sh
+brew upgrade whaledoc
+```
 
 ## Uninstalling
 
