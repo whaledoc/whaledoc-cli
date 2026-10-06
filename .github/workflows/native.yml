@@ -79,10 +79,11 @@ jobs:
         shell: bash
         run: |
           mkdir dist
+          cp LICENSE NOTICE target/
           if [ "$RUNNER_OS" = "Windows" ]; then
-            (cd target && 7z a -tzip "../dist/whaledoc-${{ matrix.target }}.zip" whaledoc.exe)
+            (cd target && 7z a -tzip "../dist/whaledoc-${{ matrix.target }}.zip" whaledoc.exe LICENSE NOTICE)
           else
-            tar -czf "dist/whaledoc-${{ matrix.target }}.tar.gz" -C target whaledoc
+            tar -czf "dist/whaledoc-${{ matrix.target }}.tar.gz" -C target whaledoc LICENSE NOTICE
           fi
 
       - name: Build Windows installer
