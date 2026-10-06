@@ -64,7 +64,8 @@ public class UpdateCommand implements Callable<Integer> {
                 return latestVersion;
             });
 
-            console.success("Updated WhaleDoc CLI from %s to %s".formatted(currentVersion, latestVersion));
+            console.success("Updated WhaleDoc CLI from %s to %s".formatted(
+                    currentVersion, console.bold(console.brand(latestVersion.toString()))));
             return 0;
 
         } catch (UpdateException e) {
