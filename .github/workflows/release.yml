@@ -140,3 +140,56 @@ jobs:
           [ "$PRERELEASE" = "true" ] && args+=(--prerelease)
 
           gh release create "$TAG" dist/* "${args[@]}"
+
+  # Publishes the release to the Homebrew tap: brew install whaledoc/tap/whaledoc
+  homebrew:
+    needs: [version, publish]
+    if: needs.version.outputs.prerelease == 'false'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/checkout@v7
+        with:
+          repository: whaledoc/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+
+      - name: Update formula
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.version.outputs.tag }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          gh release download "$TAG" --pattern checksums.txt
+          mkdir -p tap/Formula
+          sh packaging/homebrew/formula.sh "$VERSION" checksums.txt > tap/Formula/whaledoc.rb
+
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git add Formula/whaledoc.rb
+
+          # Re-running a release must not fail when the formula is already up to date
+          if git diff --cached --quiet; then
+            echo "Formula already up to date"
+            exit 0
+          fi
+
+          git commit -m "Update whaledoc to $VERSION"
+          git push
+
+  # Installs the released version through Homebrew on a Mac, the way users will
+  verify-homebrew:
+    needs: [version, homebrew]
+    runs-on: macos-15
+
+    steps:
+      - name: Install with Homebrew
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          brew install whaledoc/tap/whaledoc
+          brew test whaledoc
+          whaledoc --version | grep -F "WhaleDoc version $VERSION"
