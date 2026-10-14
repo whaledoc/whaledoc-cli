@@ -186,7 +186,8 @@ class ListenCommandTest {
         listener.onReconnected();
 
         // then
-        assertThat(testConsole.errors()).isEqualToIgnoringNewLines("! Connection lost. Reconnecting in 4s (attempt 3 of 10)...");
+        assertThat(testConsole.errors().lines().toList())
+                .containsExactly("Connecting to WhaleDoc...", "! Connection lost. Reconnecting in 4s (attempt 3 of 10)...");
         assertThat(testConsole.output()).endsWith("+ Reconnected" + System.lineSeparator());
     }
 

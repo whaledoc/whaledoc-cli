@@ -6,6 +6,7 @@ import io.whaledoc.config.ConfigManager;
 import io.whaledoc.console.TestConsole;
 import io.whaledoc.update.UpdateService;
 import io.whaledoc.webhook.WebhookClient;
+import io.whaledoc.workspace.WorkspaceClient;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -28,6 +29,9 @@ class CommandFactoryTest {
 
     @Mock
     private WebhookClient webhookClient;
+
+    @Mock
+    private WorkspaceClient workspaceClient;
 
     @Mock
     private UpdateService updateService;
@@ -57,7 +61,7 @@ class CommandFactoryTest {
         CommandLine commandLine = createCommandLine(output);
 
         // then
-        assertThat(commandLine.getSubcommands()).containsOnlyKeys("login", "logout", "listen", "trigger", "update");
+        assertThat(commandLine.getSubcommands()).containsOnlyKeys("login", "logout", "listen", "trigger", "workspace", "update");
     }
 
     private CommandLine createCommandLine(StringWriter output) {
@@ -68,6 +72,7 @@ class CommandFactoryTest {
                 configManager,
                 authClient,
                 webhookClient,
+                workspaceClient,
                 updateService
         );
 

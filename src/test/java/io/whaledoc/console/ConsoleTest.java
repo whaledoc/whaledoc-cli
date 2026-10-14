@@ -87,6 +87,7 @@ class ConsoleTest {
         spinner.stop();
 
         // then
-        assertThat(testConsole.output()).isEqualToIgnoringNewLines("Logging out...");
+        assertThat(testConsole.errors()).isEqualToIgnoringNewLines("Logging out...");
+        assertThat(testConsole.output()).isEmpty();
     }
 }

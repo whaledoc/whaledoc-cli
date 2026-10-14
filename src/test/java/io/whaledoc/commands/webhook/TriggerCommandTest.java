@@ -94,8 +94,8 @@ class TriggerCommandTest {
 
         // then
         assertThat(exitCode).isEqualTo(1);
-        assertThat(testConsole.errors())
-                .isEqualToIgnoringNewLines("x Your login is no longer valid. Run whaledoc login and try again.");
+        assertThat(testConsole.errors().lines().toList())
+                .containsExactly("Sending job.failed...", "x Your login is no longer valid. Run whaledoc login and try again.");
     }
 
     @Test
@@ -111,8 +111,8 @@ class TriggerCommandTest {
 
         // then
         assertThat(exitCode).isEqualTo(1);
-        assertThat(testConsole.errors())
-                .isEqualToIgnoringNewLines("x You've sent a lot of test events. Try again in 12 seconds.");
+        assertThat(testConsole.errors().lines().toList())
+                .containsExactly("Sending job.failed...", "x You've sent a lot of test events. Try again in 12 seconds.");
     }
 
     @Test
@@ -128,7 +128,8 @@ class TriggerCommandTest {
 
         // then
         assertThat(exitCode).isEqualTo(1);
-        assertThat(testConsole.errors()).isEqualToIgnoringNewLines("x Too many test events. Try again in a minute.");
+        assertThat(testConsole.errors().lines().toList())
+                .containsExactly("Sending job.failed...", "x Too many test events. Try again in a minute.");
     }
 
     @Test
@@ -143,7 +144,8 @@ class TriggerCommandTest {
 
         // then
         assertThat(exitCode).isEqualTo(1);
-        assertThat(testConsole.errors()).isEqualToIgnoringNewLines("x Sending job.failed failed: Something went wrong.");
+        assertThat(testConsole.errors().lines().toList())
+                .containsExactly("Sending job.failed...", "x Sending job.failed failed: Something went wrong.");
     }
 
     private static WhaleDocConfig createConfig(String accessToken) {

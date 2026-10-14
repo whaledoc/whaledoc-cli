@@ -109,7 +109,8 @@ whaledoc login
 ```
 
 The CLI opens your browser so you can authorize access to your WhaleDoc account. Check that the browser shows the
-same code as your terminal, then choose the workspace the CLI works in. To switch workspaces, log in again.
+same code as your terminal, then choose the workspace the CLI starts in. To work in another one later, see
+[`workspace`](#workspace).
 
 Your sessions in WhaleDoc (Settings → Security) list the login under this computer's name. To use another name, for
 example on a shared or CI machine:
@@ -189,6 +190,33 @@ whaledoc trigger job.completed
 The event reaches `listen` like any other event, marked as a test, so you can try your integration without running a
 real job. Test events are only for local development: they never go to your workspace's webhook endpoints or to
 anyone else's `listen`. Any event from [Webhook Events](#webhook-events) works.
+
+### `workspace`
+
+Your login can use every workspace where you may sign in the CLI. `listen` and `trigger` work in the current one;
+you choose the first when you log in.
+
+```sh
+whaledoc workspace list
+```
+
+```text
+┌───┬───────────┬───────────┐
+│   │ NAME      │ SLUG      │
+├───┼───────────┼───────────┤
+│ * │ Acme HR   │ acme-hr   │
+├───┼───────────┼───────────┤
+│   │ Northwind │ northwind │
+└───┴───────────┴───────────┘
+```
+
+`*` marks the current workspace. Piped into another command or a file, the list prints one tab-separated line per
+workspace instead, without the frame or the header, so `whaledoc workspace list | cut -f3` gives the slugs. Switch by slug, or by name when no other workspace has it:
+
+```sh
+whaledoc workspace switch northwind
+whaledoc workspace current
+```
 
 ### `update`
 

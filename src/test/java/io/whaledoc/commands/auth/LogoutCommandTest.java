@@ -85,7 +85,7 @@ class LogoutCommandTest {
 
         // then
         assertThat(exitCode).isEqualTo(1);
-        assertThat(testConsole.errors()).isEqualToIgnoringNewLines("x Logout failed: Internal Server Error");
+        assertThat(testConsole.errors().lines().toList()).containsExactly("Logging out...", "x Logout failed: Internal Server Error");
         then(configManager).should(never()).saveToFile(any());
     }
 
