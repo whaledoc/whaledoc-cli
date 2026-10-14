@@ -117,9 +117,13 @@ Response `201 Created`:
 { "id": "evt_01J9Z3K4XR", "type": "job.completed" }
 ```
 
-The API makes an event of that type with sample data and `"test": true`, and sends it to the event stream of the
-workspace the login belongs to, so a running `whaledoc listen` receives it. Test events go only to that stream, never
-to the workspace's webhook endpoints. An unknown type is refused with `400`.
+The API makes an event of that type with sample data and `"test": true`, and sends it only to the open event streams
+of the same login, so the user's own running `whaledoc listen` receives it. Test events are for local development:
+they never reach the workspace's webhook endpoints, nor another login's `whaledoc listen` in the same workspace.
+
+- No event stream open for this login: respond with `409` and a problem detail such as "Start whaledoc listen first,
+  then trigger events." The CLI shows it as it is.
+- An unknown type: respond with `400`.
 
 Test events are limited to 60 a minute per login, with bursts of up to 20. Over the limit, respond with `429` and a
 `Retry-After` header (seconds, or an HTTP date); the CLI tells the user how long to wait.
