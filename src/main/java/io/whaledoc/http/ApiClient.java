@@ -16,6 +16,8 @@ import java.time.Duration;
 public final class ApiClient {
 
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(30);
+    private static final String POST = "POST";
+    private static final String PUT = "PUT";
 
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
@@ -29,41 +31,61 @@ public final class ApiClient {
 
     public <T> T post(String path, Object requestBody, Class<T> responseType) {
 
-        return postJson(newRequest(path), requestBody, responseType);
+        return sendJson(newRequest(path), POST, requestBody, responseType);
     }
 
     public <T> T postAuthorized(String path, String accessToken, Object requestBody, Class<T> responseType) {
 
-        return postJson(newRequest(path).header("Authorization", "Bearer " + accessToken), requestBody, responseType);
+        return sendJson(authorizedRequest(path, accessToken), POST, requestBody, responseType);
     }
 
     public void postAuthorized(String path, String accessToken) {
 
-        HttpRequest request = newRequest(path)
-                .header("Authorization", "Bearer " + accessToken)
-                .POST(HttpRequest.BodyPublishers.noBody())
-                .build();
+        send(authorizedRequest(path, accessToken).POST(HttpRequest.BodyPublishers.noBody()).build());
+    }
 
-        send(request);
+    public <T> T getAuthorized(String path, String accessToken, Class<T> responseType) {
+
+        return read(send(authorizedRequest(path, accessToken).GET().build()), responseType);
+    }
+
+    public <T> T putAuthorized(String path, String accessToken, Object requestBody, Class<T> responseType) {
+
+        return sendJson(authorizedRequest(path, accessToken), PUT, requestBody, responseType);
     }
 
     public String baseUrl() {
         return baseUrl;
     }
 
-    private <T> T postJson(HttpRequest.Builder request, Object requestBody, Class<T> responseType) {
+    private <T> T sendJson(HttpRequest.Builder request, String method, Object requestBody, Class<T> responseType) {
 
         try {
             HttpRequest jsonRequest = request
                     .header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(requestBody)))
+                    .method(method, HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(requestBody)))
                     .build();
 
-            return objectMapper.readValue(send(jsonRequest), responseType);
+            return read(send(jsonRequest), responseType);
 
         } catch (IOException e) {
             throw new ApiException("Unable to process the API response.", e);
         }
+    }
+
+    private <T> T read(String body, Class<T> responseType) {
+
+        try {
+            return objectMapper.readValue(body, responseType);
+
+        } catch (IOException e) {
+            throw new ApiException("Unable to process the API response.", e);
+        }
+    }
+
+    private HttpRequest.Builder authorizedRequest(String path, String accessToken) {
+
+        return newRequest(path).header("Authorization", "Bearer " + accessToken);
     }
 
     private HttpRequest.Builder newRequest(String path) {

@@ -7,6 +7,7 @@ import picocli.CommandLine.Help.ColorScheme;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
+import java.util.List;
 
 /**
  * The terminal the commands talk to. All output goes through here so it looks the same everywhere:
@@ -39,6 +40,17 @@ public final class Console {
 
     public void println() {
         out.println();
+    }
+
+    /**
+     * Prints a table: framed in a terminal, with box characters where it can show them; as tab-separated lines
+     * without the header when the output goes to a script or a file.
+     */
+    public void table(List<String> headers, List<List<String>> rows) {
+
+        out.println(capabilities.interactive()
+                ? TextTable.framed(headers, rows, capabilities.unicode())
+                : TextTable.plain(rows));
     }
 
     public void success(String message) {
@@ -135,8 +147,13 @@ public final class Console {
         return capabilities.unicode() ? unicode : ascii;
     }
 
-    void print(String text) {
-        out.print(text);
+    /** Progress for people, on standard error, so standard output only carries results a script may read. */
+    void status(String line) {
+        err.println(line);
+    }
+
+    void printStatus(String text) {
+        err.print(text);
         out.flush();
     }
 

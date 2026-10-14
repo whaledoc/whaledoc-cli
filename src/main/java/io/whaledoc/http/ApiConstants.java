@@ -17,6 +17,10 @@ public final class ApiConstants {
     public static final String WEBHOOK_EVENTS = "/cli/webhooks/events";
     public static final String WEBHOOK_TEST_EVENTS = "/cli/webhooks/test-events";
 
+    // workspaces
+    public static final String WORKSPACES = "/cli/workspaces";
+    public static final String CURRENT_WORKSPACE = "/cli/workspaces/current";
+
     private ApiConstants() {
     }
 }

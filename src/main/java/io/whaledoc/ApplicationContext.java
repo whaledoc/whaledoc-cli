@@ -11,6 +11,7 @@ import io.whaledoc.http.ApiClient;
 import io.whaledoc.http.SseClient;
 import io.whaledoc.update.UpdateService;
 import io.whaledoc.webhook.WebhookClient;
+import io.whaledoc.workspace.WorkspaceClient;
 
 import java.net.http.HttpClient;
 import java.time.Duration;
@@ -25,6 +26,7 @@ public record ApplicationContext(
         ConfigManager configManager,
         AuthClient authClient,
         WebhookClient webhookClient,
+        WorkspaceClient workspaceClient,
         UpdateService updateService
 ) {
 
@@ -45,6 +47,7 @@ public record ApplicationContext(
                 ConfigManager.forCurrentUser(objectMapper),
                 new AuthClient(apiClient, sseClient, objectMapper),
                 new WebhookClient(apiClient, sseClient, httpClient),
+                new WorkspaceClient(apiClient),
                 UpdateService.create(httpClient, config.releasesUrl())
         );
     }

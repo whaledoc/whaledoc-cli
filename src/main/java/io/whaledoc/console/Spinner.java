@@ -2,7 +2,8 @@ package io.whaledoc.console;
 
 /**
  * Shows that the CLI is busy. It only animates in an interactive terminal; in a pipe or CI log it prints
- * its message once instead of a new frame every 100 milliseconds.
+ * its message once instead of a new frame every 100 milliseconds. Either way it writes to standard error, so piped
+ * output only carries the command's results.
  */
 public final class Spinner {
 
@@ -24,7 +25,7 @@ public final class Spinner {
     public void start() {
 
         if (!console.isInteractive()) {
-            console.println(message);
+            console.status(message);
             return;
         }
 
@@ -48,7 +49,7 @@ public final class Spinner {
         }
 
         thread = null;
-        console.print(CLEAR_LINE);
+        console.printStatus(CLEAR_LINE);
     }
 
     private void animate() {
@@ -57,7 +58,7 @@ public final class Spinner {
 
         for (int frame = 0; running; frame = (frame + 1) % frames.length) {
 
-            console.print("\r" + console.brand(frames[frame]) + " " + message);
+            console.printStatus("\r" + console.brand(frames[frame]) + " " + message);
 
             try {
                 Thread.sleep(100);

@@ -5,6 +5,9 @@ import io.whaledoc.commands.auth.LogoutCommand;
 import io.whaledoc.commands.update.UpdateCommand;
 import io.whaledoc.commands.webhook.ListenCommand;
 import io.whaledoc.commands.webhook.TriggerCommand;
+import io.whaledoc.commands.workspace.WorkspaceCurrentCommand;
+import io.whaledoc.commands.workspace.WorkspaceListCommand;
+import io.whaledoc.commands.workspace.WorkspaceSwitchCommand;
 import io.whaledoc.update.Version;
 import io.whaledoc.utility.BrowserLauncher;
 import io.whaledoc.utility.VersionProvider;
@@ -30,6 +33,9 @@ public final class CommandFactory implements CommandLine.IFactory {
                 LogoutCommand.class, () -> new LogoutCommand(context.configManager(), context.authClient(), context.console()),
                 ListenCommand.class, () -> new ListenCommand(context.configManager(), context.webhookClient(), context.console()),
                 TriggerCommand.class, () -> new TriggerCommand(context.configManager(), context.webhookClient(), context.console()),
+                WorkspaceListCommand.class, () -> new WorkspaceListCommand(context.configManager(), context.workspaceClient(), context.console()),
+                WorkspaceCurrentCommand.class, () -> new WorkspaceCurrentCommand(context.configManager(), context.workspaceClient(), context.console()),
+                WorkspaceSwitchCommand.class, () -> new WorkspaceSwitchCommand(context.configManager(), context.workspaceClient(), context.console()),
                 UpdateCommand.class, () -> new UpdateCommand(context.updateService(), Version.parse(context.config().version()), context.console()),
                 VersionProvider.class, () -> new VersionProvider(context.config().version())
         );

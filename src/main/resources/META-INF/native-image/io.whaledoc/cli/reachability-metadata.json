@@ -31,6 +31,18 @@
       "allDeclaredFields": true
     },
     {
+      "type": "io.whaledoc.workspace.Workspace",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "io.whaledoc.workspace.WorkspaceClient$SwitchRequest",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
       "type": "ch.qos.logback.classic.encoder.PatternLayoutEncoder",
       "methods": [
         {
