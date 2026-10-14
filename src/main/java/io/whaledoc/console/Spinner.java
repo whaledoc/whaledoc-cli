@@ -10,6 +10,7 @@ public final class Spinner {
     private static final String[] UNICODE_FRAMES = {"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"};
     private static final String[] ASCII_FRAMES = {"|", "/", "-", "\\"};
     private static final String CLEAR_LINE = "\r\u001B[2K";
+    private static final String CURSOR_UP = "\u001B[1A";
 
     private final Console console;
     private final String message;
@@ -50,6 +51,19 @@ public final class Spinner {
 
         thread = null;
         console.printStatus(CLEAR_LINE);
+    }
+
+    /**
+     * The terminal echoed the user's Enter as a new line under the spinner. Goes back up to the spinner's own line and
+     * clears it, so the animation carries on there instead of leaving its last frame behind.
+     */
+    public void returnAfterEnter() {
+
+        if (!running) {
+            return;
+        }
+
+        console.printStatus(CURSOR_UP + CLEAR_LINE);
     }
 
     private void animate() {
