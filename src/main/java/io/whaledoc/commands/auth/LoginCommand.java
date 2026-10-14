@@ -3,6 +3,7 @@ package io.whaledoc.commands.auth;
 import io.whaledoc.auth.AuthClient;
 import io.whaledoc.auth.AuthSession;
 import io.whaledoc.auth.AuthenticationEvent;
+import io.whaledoc.auth.CurrentLogin;
 import io.whaledoc.config.ConfigManager;
 import io.whaledoc.config.WhaleDocConfig;
 import io.whaledoc.console.Console;
@@ -11,6 +12,7 @@ import io.whaledoc.exceptions.ApiException;
 import io.whaledoc.utility.BrowserLauncher;
 import io.whaledoc.utility.ComputerName;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
@@ -52,26 +54,23 @@ public class LoginCommand implements Callable<Integer> {
     public Integer call() {
 
         WhaleDocConfig config = configManager.load();
+        Optional<String> savedToken = Optional.ofNullable(config.accessToken()).filter(StringUtils::isNotBlank);
 
         try {
-            AuthSession session = authClient.createSession(config.cliId(),
-                    Optional.ofNullable(deviceName).or(ComputerName::current));
-            CompletableFuture<AuthenticationEvent> authentication = authClient.waitForAuthentication(session);
+            Optional<CurrentLogin> currentLogin = savedToken.flatMap(authClient::currentLogin);
 
-            printInstructions(session);
-            openBrowserOnEnter(session.authorizationUrl(), authentication);
+            if (currentLogin.isPresent()) {
 
-            AuthenticationEvent approved = awaitAuthentication(authentication);
-            configManager.saveToFile(
-                    WhaleDocConfig.builder()
-                            .cliId(config.cliId())
-                            .accessToken(approved.accessToken())
-                            .build()
-            );
+                refuse(currentLogin.get());
+                return 1;
+            }
 
-            console.success(approved.workspace()
-                    .map(workspace -> "Logged in to " + console.bold(workspace))
-                    .orElse("Logged in"));
+            if (savedToken.isPresent()) {
+                console.println("Your previous login no longer works. Starting a new one.");
+            }
+
+            AuthenticationEvent approved = logIn(config);
+            console.success(loggedIn(approved));
             return 0;
 
         } catch (ApiException e) {
@@ -79,6 +78,51 @@ public class LoginCommand implements Callable<Integer> {
             console.error("Login failed: " + e.getMessage());
             return 1;
         }
+    }
+
+    // One login per installation: a second one would leave the first signed in, unused, until it expires
+    private void refuse(CurrentLogin login) {
+
+        String workspace = login.currentWorkspace()
+                .map(current -> ", working in " + console.bold(current.name()))
+                .orElse("");
+
+        console.error("You're already logged in as " + console.bold(login.account().email()) + workspace + ".");
+        console.println("Run " + console.bold("whaledoc logout") + " first to log in with another account.");
+    }
+
+    private AuthenticationEvent logIn(WhaleDocConfig config) {
+
+        AuthSession session = authClient.createSession(config.cliId(),
+                Optional.ofNullable(deviceName).or(ComputerName::current));
+        CompletableFuture<AuthenticationEvent> authentication = authClient.waitForAuthentication(session);
+        Spinner spinner = console.spinner("Waiting for you to approve the login... " + console.dim("(^C to quit)"));
+
+        printInstructions(session);
+        openBrowserOnEnter(session.authorizationUrl(), authentication, spinner);
+
+        AuthenticationEvent approved = awaitAuthentication(authentication, spinner);
+        configManager.saveToFile(
+                WhaleDocConfig.builder()
+                        .cliId(config.cliId())
+                        .accessToken(approved.accessToken())
+                        .build()
+        );
+
+        return approved;
+    }
+
+    // "Logged in as mara@acme.com. Working in Acme HR.": the login is the account's, the workspace only where it starts
+    private String loggedIn(AuthenticationEvent approved) {
+
+        String account = approved.account()
+                .map(email -> "Logged in as " + console.bold(email) + ".")
+                .orElse("Logged in.");
+        String workspace = approved.workspace()
+                .map(name -> " Working in " + console.bold(name) + ".")
+                .orElse("");
+
+        return account + workspace;
     }
 
     // The code is shown in the browser too; comparing them protects against approving someone else's login
@@ -93,19 +137,24 @@ public class LoginCommand implements Callable<Integer> {
     }
 
     // Waits for Enter in the background, so a login approved through the printed URL finishes without it
-    private void openBrowserOnEnter(URI authorizationUrl, CompletableFuture<AuthenticationEvent> authentication) {
+    private void openBrowserOnEnter(URI authorizationUrl, CompletableFuture<AuthenticationEvent> authentication, Spinner spinner) {
 
         Thread.ofVirtual().start(() -> {
 
-            if (console.waitForEnter() && !authentication.isDone() && !browserLauncher.open(authorizationUrl)) {
+            if (!console.waitForEnter() || authentication.isDone()) {
+                return;
+            }
+
+            spinner.returnAfterEnter();
+
+            if (!browserLauncher.open(authorizationUrl)) {
                 console.warning("Unable to open a browser. Please visit the URL above.");
             }
         });
     }
 
-    private AuthenticationEvent awaitAuthentication(CompletableFuture<AuthenticationEvent> authentication) {
+    private AuthenticationEvent awaitAuthentication(CompletableFuture<AuthenticationEvent> authentication, Spinner spinner) {
 
-        Spinner spinner = console.spinner("Waiting for you to approve the login... " + console.dim("(^C to quit)"));
         spinner.start();
 
         try {

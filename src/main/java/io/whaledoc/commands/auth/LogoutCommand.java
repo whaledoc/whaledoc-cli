@@ -20,6 +20,8 @@ import java.util.concurrent.Callable;
 )
 public class LogoutCommand implements Callable<Integer> {
 
+    private static final int UNAUTHORIZED = 401;
+
     private final ConfigManager configManager;
     private final AuthClient authClient;
     private final Console console;
@@ -45,22 +47,36 @@ public class LogoutCommand implements Callable<Integer> {
 
         try {
             authClient.logout(config.accessToken());
-
-            configManager.saveToFile(
-                    WhaleDocConfig.builder()
-                            .cliId(config.cliId())
-                            .build()
-            );
-
             spinner.stop();
-            console.success("Logged out");
-            return 0;
+            return forgetLogin(config);
 
         } catch (ApiException e) {
             spinner.stop();
-            log.error("Logout failed", e);
-            console.error("Logout failed: " + e.getMessage());
-            return 1;
+            return failed(e, config);
         }
+    }
+
+    // A login WhaleDoc already refuses is over on its side, so only the saved copy is left to remove
+    private Integer failed(ApiException e, WhaleDocConfig config) {
+
+        if (e.statusCode() == UNAUTHORIZED) {
+            return forgetLogin(config);
+        }
+
+        log.error("Logout failed", e);
+        console.error("Logout failed: " + e.getMessage());
+        return 1;
+    }
+
+    private Integer forgetLogin(WhaleDocConfig config) {
+
+        configManager.saveToFile(
+                WhaleDocConfig.builder()
+                        .cliId(config.cliId())
+                        .build()
+        );
+
+        console.success("Logged out");
+        return 0;
     }
 }

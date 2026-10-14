@@ -21,6 +21,8 @@ public final class AuthClient {
 
     private static final Duration AUTHENTICATION_TIMEOUT = Duration.ofMinutes(5);
 
+    private static final int UNAUTHORIZED = 401;
+
     private final ApiClient apiClient;
     private final SseClient sseClient;
     private final ObjectMapper objectMapper;
@@ -100,6 +102,7 @@ public final class AuthClient {
 
             authentication.complete(new AuthenticationEvent(
                     accessToken.asText(),
+                    payload.path("account").path("email").asText(null),
                     payload.path("workspace").path("name").asText(null)
             ));
 
@@ -107,6 +110,31 @@ public final class AuthClient {
             authentication.completeExceptionally(new ApiException("Unable to process authentication event.", e)
             );
         }
+    }
+
+    /**
+     * The account a saved login belongs to, while WhaleDoc still accepts it. Empty once it refuses the token, as after a
+     * sign-out from the browser or a password change.
+     *
+     * @throws ApiException when WhaleDoc can't be reached or answers with another error
+     */
+    public Optional<CurrentLogin> currentLogin(String accessToken) {
+
+        try {
+            return Optional.of(apiClient.getAuthorized(ApiConstants.AUTH_ME, accessToken, CurrentLogin.class));
+
+        } catch (ApiException e) {
+            return refusedLogin(e);
+        }
+    }
+
+    private static Optional<CurrentLogin> refusedLogin(ApiException e) {
+
+        if (e.statusCode() == UNAUTHORIZED) {
+            return Optional.empty();
+        }
+
+        throw e;
     }
 
     public void logout(String accessToken) {

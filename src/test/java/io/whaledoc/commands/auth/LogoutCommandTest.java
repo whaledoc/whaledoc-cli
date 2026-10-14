@@ -89,6 +89,25 @@ class LogoutCommandTest {
         then(configManager).should(never()).saveToFile(any());
     }
 
+    @Test
+    void shouldRemoveAccessTokenWhenApiNoLongerAcceptsIt() {
+
+        // given
+        given(configManager.load()).willReturn(createLoggedInConfig());
+        willThrow(new ApiException(401, "Not signed in")).given(authClient).logout(ACCESS_TOKEN);
+        WhaleDocConfig expectedConfig = createLoggedOutConfig();
+        ArgumentCaptor<WhaleDocConfig> savedConfig = ArgumentCaptor.forClass(WhaleDocConfig.class);
+
+        // when
+        Integer exitCode = logoutCommand.call();
+
+        // then
+        assertThat(exitCode).isZero();
+        then(configManager).should().saveToFile(savedConfig.capture());
+        assertThat(savedConfig.getValue()).usingRecursiveComparison().isEqualTo(expectedConfig);
+        assertThat(testConsole.output()).contains("Logged out");
+    }
+
     private WhaleDocConfig createLoggedInConfig() {
 
         return WhaleDocConfig.builder()

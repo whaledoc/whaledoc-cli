@@ -2,6 +2,7 @@ package io.whaledoc;
 
 import io.whaledoc.commands.auth.LoginCommand;
 import io.whaledoc.commands.auth.LogoutCommand;
+import io.whaledoc.commands.auth.StatusCommand;
 import io.whaledoc.commands.update.UpdateCommand;
 import io.whaledoc.commands.webhook.ListenCommand;
 import io.whaledoc.commands.webhook.TriggerCommand;
@@ -19,6 +20,7 @@ import static picocli.CommandLine.*;
         subcommands = {
                 LoginCommand.class,
                 LogoutCommand.class,
+                StatusCommand.class,
                 ListenCommand.class,
                 TriggerCommand.class,
                 WorkspaceCommand.class,
