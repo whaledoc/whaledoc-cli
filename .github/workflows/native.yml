@@ -1,7 +1,7 @@
 name: Native build
 
 # Reusable workflow: builds, smoke-tests and uploads the native executable for every platform.
-# Called by build.yml (pull requests and main) and release.yml.
+# Called by build.yml (main, or by hand) and release.yml.
 
 on:
   workflow_call:
