@@ -2,6 +2,7 @@ package io.whaledoc;
 
 import io.whaledoc.commands.auth.LoginCommand;
 import io.whaledoc.commands.auth.LogoutCommand;
+import io.whaledoc.commands.auth.StatusCommand;
 import io.whaledoc.commands.update.UpdateCommand;
 import io.whaledoc.commands.webhook.ListenCommand;
 import io.whaledoc.commands.webhook.TriggerCommand;
@@ -31,6 +32,7 @@ public final class CommandFactory implements CommandLine.IFactory {
         this.factories = Map.of(
                 LoginCommand.class, () -> new LoginCommand(context.configManager(), context.authClient(), new BrowserLauncher(), context.console()),
                 LogoutCommand.class, () -> new LogoutCommand(context.configManager(), context.authClient(), context.console()),
+                StatusCommand.class, () -> new StatusCommand(context.configManager(), context.authClient(), context.console()),
                 ListenCommand.class, () -> new ListenCommand(context.configManager(), context.webhookClient(), context.console()),
                 TriggerCommand.class, () -> new TriggerCommand(context.configManager(), context.webhookClient(), context.console()),
                 WorkspaceListCommand.class, () -> new WorkspaceListCommand(context.configManager(), context.workspaceClient(), context.console()),

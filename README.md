@@ -119,6 +119,23 @@ example on a shared or CI machine:
 whaledoc login --device-name ci-runner
 ```
 
+The login belongs to your account, not to one workspace. While it works, `whaledoc login` won't start another one: run
+`whaledoc logout` first to log in with another account.
+
+### `status`
+
+Show the account you're logged in as, the workspace the CLI works in, and this computer's name.
+
+```sh
+whaledoc status
+```
+
+```text
+Logged in as mara@acme.com (Mara Jansen)
+Workspace  Acme HR  acme-hr
+Device     dev-laptop
+```
+
 ### `logout`
 
 Log out of your WhaleDoc account.
