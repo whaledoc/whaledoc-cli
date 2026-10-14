@@ -155,7 +155,9 @@ Forward webhook events to a local HTTP endpoint:
 whaledoc listen --forward-to http://localhost:8080/events
 ```
 
-The CLI continues listening for events and forwards each matching event to the specified endpoint.
+The CLI continues listening for events and forwards each matching event to the specified endpoint. These are your
+workspace's real events, and test events you send with `whaledoc trigger`. Your workspace's webhook endpoints still
+receive the real events as usual.
 
 You can combine event filtering and forwarding:
 
@@ -169,15 +171,17 @@ This makes it possible to develop and test webhook integrations locally without 
 
 ### `trigger`
 
-Send a test webhook event with sample data to your workspace:
+Send a test webhook event with sample data to your own `whaledoc listen`. Start `listen` first, in another
+terminal, then trigger events:
 
 ```sh
+whaledoc listen --forward-to localhost:8080/events
 whaledoc trigger job.completed
 ```
 
-The event reaches `whaledoc listen` like any other event, marked as a test, so you can try your integration without
-running a real job. Test events don't go to your workspace's webhook endpoints. Any event from
-[Webhook Events](#webhook-events) works.
+The event reaches `listen` like any other event, marked as a test, so you can try your integration without running a
+real job. Test events are only for local development: they never go to your workspace's webhook endpoints or to
+anyone else's `listen`. Any event from [Webhook Events](#webhook-events) works.
 
 ### `update`
 
@@ -380,8 +384,6 @@ Run the complete test suite:
 ```
 
 ### Local API
-
-The endpoints the CLI calls, and what it expects from them, are described in [docs/cli-api.md](docs/cli-api.md).
 
 When developing against a local WhaleDoc API instance, build the CLI with the local API URL:
 
