@@ -12,6 +12,7 @@ public final class ApiConstants {
     public static final String AUTH_SESSIONS = "/cli/auth/sessions";
     public static final String AUTH_SESSION_EVENTS = "/cli/auth/sessions/%s/events";
     public static final String AUTH_LOGOUT = "/cli/auth/logout";
+    public static final String AUTH_ME = "/cli/auth/me";
 
     // webhook listener
     public static final String WEBHOOK_EVENTS = "/cli/webhooks/events";

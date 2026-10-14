@@ -1,6 +1,7 @@
 package io.whaledoc.auth;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.github.tomakehurst.wiremock.client.ResponseDefinitionBuilder;
 import com.github.tomakehurst.wiremock.junit5.WireMockRuntimeInfo;
 import com.github.tomakehurst.wiremock.junit5.WireMockTest;
 import io.whaledoc.exceptions.ApiException;
@@ -20,6 +21,8 @@ import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalToJson;
+import static com.github.tomakehurst.wiremock.client.WireMock.serverError;
+import static com.github.tomakehurst.wiremock.client.WireMock.unauthorized;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.noContent;
 import static com.github.tomakehurst.wiremock.client.WireMock.notFound;
@@ -36,6 +39,7 @@ class AuthClientTest {
 
     private static final String CLI_ID = "cli-1";
     private static final String SESSION_ID = "session-1";
+    private static final String ACCESS_TOKEN = "wd_cli_token";
     private static final Duration TIMEOUT = Duration.ofSeconds(5);
 
     private AuthClient authClient;
@@ -79,13 +83,13 @@ class AuthClientTest {
     }
 
     @Test
-    void shouldReturnAccessTokenAndWorkspaceWhenAuthenticationEventArrives() {
+    void shouldReturnAccessTokenAccountAndWorkspaceWhenAuthenticationEventArrives() {
 
         // given
         givenAuthenticationEventIsSent("""
-                { "accessToken": "access-token", "workspace": { "id": "ws-1", "name": "Acme" } }
+                { "accessToken": "access-token", "account": { "email": "mara@acme.com" }, "workspace": { "id": "ws-1", "name": "Acme" } }
                 """);
-        AuthenticationEvent expectedEvent = new AuthenticationEvent("access-token", "Acme");
+        AuthenticationEvent expectedEvent = new AuthenticationEvent("access-token", "mara@acme.com", "Acme");
 
         // when
         CompletableFuture<AuthenticationEvent> authentication = authClient.waitForAuthentication(createExpectedSession());
@@ -101,7 +105,7 @@ class AuthClientTest {
         givenAuthenticationEventIsSent("""
                 { "accessToken": "access-token" }
                 """);
-        AuthenticationEvent expectedEvent = new AuthenticationEvent("access-token", null);
+        AuthenticationEvent expectedEvent = new AuthenticationEvent("access-token", null, null);
 
         // when
         CompletableFuture<AuthenticationEvent> authentication = authClient.waitForAuthentication(createExpectedSession());
@@ -182,6 +186,72 @@ class AuthClientTest {
 
         // then
         assertThat(thrown).isNull();
+    }
+
+    @Test
+    void shouldReturnAccountDeviceAndWorkspaceWhenSavedLoginIsAccepted() {
+
+        // given
+        givenAccountAnswers(okJson("""
+                {"account": {"email": "mara@acme.com", "fullName": "Mara Jansen"}, "deviceName": "dev-laptop",
+                 "workspace": {"id": "ws-1", "slug": "acme-hr", "name": "Acme HR"}}
+                """));
+        CurrentLogin expectedLogin = new CurrentLogin(new CurrentLogin.Account("mara@acme.com", "Mara Jansen"),
+                "dev-laptop", new CurrentLogin.Workspace("acme-hr", "Acme HR"));
+
+        // when
+        Optional<CurrentLogin> currentLogin = authClient.currentLogin(ACCESS_TOKEN);
+
+        // then
+        assertThat(currentLogin).contains(expectedLogin);
+    }
+
+    @Test
+    void shouldReturnLoginWithoutWorkspaceWhenItHasNone() {
+
+        // given
+        givenAccountAnswers(okJson("""
+                {"account": {"email": "mara@acme.com", "fullName": "Mara Jansen"}, "deviceName": "dev-laptop", "workspace": null}
+                """));
+
+        // when
+        Optional<CurrentLogin> currentLogin = authClient.currentLogin(ACCESS_TOKEN);
+
+        // then
+        assertThat(currentLogin).map(CurrentLogin::currentWorkspace).contains(Optional.empty());
+    }
+
+    @Test
+    void shouldReturnNoLoginWhenSavedLoginIsRefused() {
+
+        // given
+        givenAccountAnswers(unauthorized());
+
+        // when
+        Optional<CurrentLogin> currentLogin = authClient.currentLogin(ACCESS_TOKEN);
+
+        // then
+        assertThat(currentLogin).isEmpty();
+    }
+
+    @Test
+    void shouldThrowApiExceptionWhenSavedLoginCannotBeChecked() {
+
+        // given
+        givenAccountAnswers(serverError());
+
+        // when
+        Throwable thrown = catchThrowable(() -> authClient.currentLogin(ACCESS_TOKEN));
+
+        // then
+        assertThat(thrown).isInstanceOf(ApiException.class);
+    }
+
+    private void givenAccountAnswers(ResponseDefinitionBuilder response) {
+
+        stubFor(get(urlEqualTo("/cli/auth/me"))
+                .withHeader("Authorization", equalTo("Bearer " + ACCESS_TOKEN))
+                .willReturn(response));
     }
 
     private void givenSessionCanBeCreated() {

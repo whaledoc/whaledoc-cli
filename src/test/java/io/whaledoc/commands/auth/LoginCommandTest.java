@@ -3,6 +3,7 @@ package io.whaledoc.commands.auth;
 import io.whaledoc.auth.AuthClient;
 import io.whaledoc.auth.AuthSession;
 import io.whaledoc.auth.AuthenticationEvent;
+import io.whaledoc.auth.CurrentLogin;
 import io.whaledoc.config.ConfigManager;
 import io.whaledoc.config.WhaleDocConfig;
 import io.whaledoc.console.TestConsole;
@@ -31,7 +32,10 @@ class LoginCommandTest {
 
     private static final String CLI_ID = "3f1b2c4d-5e6f-4a1b-9c2d-7e8f9a0b1c2d";
     private static final String ACCESS_TOKEN = "access-token";
-    private static final AuthenticationEvent APPROVED = new AuthenticationEvent(ACCESS_TOKEN, "Acme");
+    private static final String SAVED_TOKEN = "saved-token";
+    private static final AuthenticationEvent APPROVED = new AuthenticationEvent(ACCESS_TOKEN, "mara@acme.com", "Acme");
+    private static final CurrentLogin CURRENT_LOGIN = new CurrentLogin(
+            new CurrentLogin.Account("mara@acme.com", "Mara Jansen"), "dev-laptop", new CurrentLogin.Workspace("acme-hr", "Acme HR"));
     private static final URI AUTHORIZATION_URL = URI.create("https://app.whaledoc.io/cli/authorize/session-1");
     private static final AuthSession SESSION = new AuthSession("session-1", AUTHORIZATION_URL, "ABCD-1234");
 
@@ -62,7 +66,7 @@ class LoginCommandTest {
         assertThat(exitCode).isZero();
         then(configManager).should().saveToFile(savedConfig.capture());
         assertThat(savedConfig.getValue()).usingRecursiveComparison().isEqualTo(expectedConfig);
-        assertThat(testConsole.output()).contains("Logged in to Acme");
+        assertThat(testConsole.output()).contains("Logged in as mara@acme.com. Working in Acme.");
     }
 
     @Test
@@ -129,6 +133,57 @@ class LoginCommandTest {
         // then
         assertThat(exitCode).isEqualTo(1);
         then(authClient).should(never()).waitForAuthentication(any());
+    }
+
+    @Test
+    void shouldRefuseLoginWhenSavedLoginIsStillActive() {
+
+        // given
+        given(configManager.load()).willReturn(createConfig(SAVED_TOKEN));
+        given(authClient.currentLogin(SAVED_TOKEN)).willReturn(Optional.of(CURRENT_LOGIN));
+
+        // when
+        Integer exitCode = createLoginCommand("").call();
+
+        // then
+        assertThat(exitCode).isEqualTo(1);
+        assertThat(testConsole.errors()).contains("You're already logged in as mara@acme.com, working in Acme HR.");
+        assertThat(testConsole.output()).contains("Run whaledoc logout first to log in with another account.");
+        then(authClient).should(never()).createSession(any(), any());
+    }
+
+    @Test
+    void shouldStartNewLoginWhenSavedLoginNoLongerWorks() {
+
+        // given
+        given(configManager.load()).willReturn(createConfig(SAVED_TOKEN));
+        given(authClient.currentLogin(SAVED_TOKEN)).willReturn(Optional.empty());
+        given(authClient.createSession(eq(CLI_ID), any())).willReturn(SESSION);
+        given(authClient.waitForAuthentication(SESSION)).willReturn(CompletableFuture.completedFuture(APPROVED));
+
+        // when
+        Integer exitCode = createLoginCommand("").call();
+
+        // then
+        assertThat(exitCode).isZero();
+        assertThat(testConsole.output()).contains("Your previous login no longer works. Starting a new one.");
+        then(configManager).should().saveToFile(any());
+    }
+
+    @Test
+    void shouldNotStartLoginWhenSavedLoginCannotBeChecked() {
+
+        // given
+        given(configManager.load()).willReturn(createConfig(SAVED_TOKEN));
+        given(authClient.currentLogin(SAVED_TOKEN)).willThrow(new ApiException("Unable to reach WhaleDoc."));
+
+        // when
+        Integer exitCode = createLoginCommand("").call();
+
+        // then
+        assertThat(exitCode).isEqualTo(1);
+        assertThat(testConsole.errors()).contains("Login failed: Unable to reach WhaleDoc.");
+        then(authClient).should(never()).createSession(any(), any());
     }
 
     private void givenLoginSessionIsCreated() {
