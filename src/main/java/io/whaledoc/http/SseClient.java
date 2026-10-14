@@ -191,7 +191,7 @@ public final class SseClient {
         HttpRequest.Builder request = HttpRequest.newBuilder(uri)
                 .header("Accept", SSE_MEDIA_TYPE)
                 .header("Cache-Control", "no-cache")
-                .header("X-API-Version", ApiConstants.API_VERSION);
+                .header(ApiConstants.API_VERSION_HEADER, ApiConstants.API_VERSION);
 
         if (StringUtils.isNotBlank(accessToken)) {
             request.header("Authorization", "Bearer " + accessToken);

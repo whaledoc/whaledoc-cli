@@ -60,7 +60,7 @@ public final class ApiClient {
 
         return HttpRequest.newBuilder(URI.create(baseUrl + path))
                 .timeout(REQUEST_TIMEOUT)
-                .header("X-API-Version", ApiConstants.API_VERSION)
+                .header(ApiConstants.API_VERSION_HEADER, ApiConstants.API_VERSION)
                 .header("Accept", "application/json");
     }
 

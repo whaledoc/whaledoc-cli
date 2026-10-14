@@ -244,6 +244,7 @@ class SseClientTest {
 
         stubFor(get(urlEqualTo(path))
                 .withHeader("Accept", equalTo("text/event-stream"))
+                .withHeader(ApiConstants.API_VERSION_HEADER, equalTo(ApiConstants.API_VERSION))
                 .willReturn(aResponse()
                         .withHeader("Content-Type", "text/event-stream")
                         .withBody(body)));

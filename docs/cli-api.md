@@ -10,9 +10,11 @@ This is the contract between the WhaleDoc CLI and the WhaleDoc API: the endpoint
 
 | Header | Value |
 |---|---|
-| `X-API-Version` | `v1` |
+| `API-Version` | `1` |
 | `Accept` | `application/json`, or `text/event-stream` for event streams |
 | `Authorization` | `Bearer <access token>`, on endpoints that require a login |
+
+**Versions.** The API version is a whole number. A request without `API-Version` is refused with `400`.
 
 **Compatibility.** The CLI ignores unknown fields in JSON responses, so adding fields is always safe. Removing or renaming fields, or changing their meaning, breaks CLIs that are already installed and needs a new API version.
 
