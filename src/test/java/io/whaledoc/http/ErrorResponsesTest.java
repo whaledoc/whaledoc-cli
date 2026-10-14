@@ -5,6 +5,11 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import java.net.http.HttpHeaders;
+import java.time.Duration;
+import java.util.List;
+import java.util.Map;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 class ErrorResponsesTest {
@@ -19,7 +24,7 @@ class ErrorResponsesTest {
                 """;
 
         // when
-        ApiException exception = ErrorResponses.toException(429, body);
+        ApiException exception = ErrorResponses.toException(429, body, noHeaders());
 
         // then
         assertThat(exception).hasMessage("Too many attempts. Try again in 5 minutes.");
@@ -35,7 +40,7 @@ class ErrorResponsesTest {
                 """;
 
         // when
-        ApiException exception = ErrorResponses.toException(404, body);
+        ApiException exception = ErrorResponses.toException(404, body, noHeaders());
 
         // then
         assertThat(exception).hasMessage("Not Found");
@@ -46,7 +51,7 @@ class ErrorResponsesTest {
     void shouldShowBodyAsSentWhenItIsNotProblemDetails(String body) {
 
         // when
-        ApiException exception = ErrorResponses.toException(500, body);
+        ApiException exception = ErrorResponses.toException(500, body, noHeaders());
 
         // then
         assertThat(exception).hasMessage("API request failed with status 500: " + body);
@@ -56,9 +61,26 @@ class ErrorResponsesTest {
     void shouldNameOnlyTheStatusWhenBodyIsEmpty() {
 
         // when
-        ApiException exception = ErrorResponses.toException(502, "");
+        ApiException exception = ErrorResponses.toException(502, "", noHeaders());
 
         // then
         assertThat(exception).hasMessage("API request failed with status 502.");
+    }
+
+    @Test
+    void shouldKeepWaitWhenResponseSaysHowLongToWait() {
+
+        // given
+        HttpHeaders headers = HttpHeaders.of(Map.of("Retry-After", List.of("12")), (name, value) -> true);
+
+        // when
+        ApiException exception = ErrorResponses.toException(429, "", headers);
+
+        // then
+        assertThat(exception.retryAfter()).contains(Duration.ofSeconds(12));
+    }
+
+    private static HttpHeaders noHeaders() {
+        return HttpHeaders.of(Map.of(), (name, value) -> true);
     }
 }

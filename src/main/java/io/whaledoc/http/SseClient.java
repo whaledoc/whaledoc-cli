@@ -219,7 +219,7 @@ public final class SseClient {
         if (statusCode < 200 || statusCode >= 300) {
 
             try (InputStream body = response.body()) {
-                throw ErrorResponses.toException(statusCode, new String(body.readAllBytes(), StandardCharsets.UTF_8));
+                throw ErrorResponses.toException(statusCode, new String(body.readAllBytes(), StandardCharsets.UTF_8), response.headers());
             }
         }
 

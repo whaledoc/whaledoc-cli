@@ -16,6 +16,7 @@ import picocli.CommandLine.Model.CommandSpec;
 import picocli.CommandLine.Parameters;
 import picocli.CommandLine.Spec;
 
+import java.time.Duration;
 import java.util.concurrent.Callable;
 
 @Command(
@@ -49,6 +50,9 @@ import java.util.concurrent.Callable;
 )
 @Slf4j
 public class TriggerCommand implements Callable<Integer> {
+
+    private static final int TOO_MANY_REQUESTS = 429;
+    private static final long SECONDS_PER_MINUTE = 60;
 
     private final ConfigManager configManager;
     private final WebhookClient webhookClient;
@@ -118,6 +122,25 @@ public class TriggerCommand implements Callable<Integer> {
             return "Your login is no longer valid. Run " + console.bold("whaledoc login") + " and try again.";
         }
 
+        if (e.statusCode() == TOO_MANY_REQUESTS) {
+            return e.retryAfter()
+                    .map(wait -> "You've sent a lot of test events. Try again in " + describeWait(wait) + ".")
+                    .orElse(e.getMessage());
+        }
+
         return "Sending " + event + " failed: " + e.getMessage();
+    }
+
+    // "1 second", "45 seconds", "2 minutes": rounded up, so waiting that long is always enough
+    private static String describeWait(Duration wait) {
+
+        long seconds = Math.max(1, wait.toSeconds() + (wait.toNanosPart() > 0 ? 1 : 0));
+
+        if (seconds < SECONDS_PER_MINUTE) {
+            return seconds == 1 ? "1 second" : seconds + " seconds";
+        }
+
+        long minutes = (seconds + SECONDS_PER_MINUTE - 1) / SECONDS_PER_MINUTE;
+        return minutes == 1 ? "1 minute" : minutes + " minutes";
     }
 }

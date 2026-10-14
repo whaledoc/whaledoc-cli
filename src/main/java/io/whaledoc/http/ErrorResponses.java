@@ -7,25 +7,30 @@ import io.whaledoc.exceptions.ApiException;
 import org.apache.commons.lang3.StringUtils;
 
 import java.io.IOException;
+import java.net.http.HttpHeaders;
+import java.time.Instant;
 import java.util.Optional;
 
 /**
  * Turns an error response into the message the user sees. The API answers errors with RFC 9457 problem details,
- * whose {@code detail} (or else {@code title}) is a short, readable sentence; any other body is shown as sent.
+ * whose {@code detail} (or else {@code title}) is a short, readable sentence; any other body is shown as sent. A
+ * {@code Retry-After} header, sent with a 429, says how long to wait.
  */
 final class ErrorResponses {
 
     private static final ObjectMapper OBJECT_MAPPER = JsonMapper.builder().build();
+    private static final String RETRY_AFTER_HEADER = "Retry-After";
 
     private ErrorResponses() {
     }
 
-    static ApiException toException(int statusCode, String body) {
+    static ApiException toException(int statusCode, String body, HttpHeaders headers) {
 
         String message = problemMessage(body)
                 .orElseGet(() -> plainMessage(statusCode, body));
 
-        return new ApiException(statusCode, message);
+        return new ApiException(statusCode, message,
+                RetryAfter.parse(headers.firstValue(RETRY_AFTER_HEADER), Instant.now()).orElse(null));
     }
 
     private static Optional<String> problemMessage(String body) {

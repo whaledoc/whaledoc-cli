@@ -13,6 +13,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import picocli.CommandLine;
 
+import java.time.Duration;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
@@ -97,7 +99,24 @@ class TriggerCommandTest {
     }
 
     @Test
-    void shouldShowApiMessageWhenSendingFails() {
+    void shouldSayHowLongToWaitWhenTooManyTestEventsWereSent() {
+
+        // given
+        given(configManager.load()).willReturn(createConfig(ACCESS_TOKEN));
+        given(webhookClient.trigger(ACCESS_TOKEN, "job.failed"))
+                .willThrow(new ApiException(429, "Too many test events.", Duration.ofMillis(11_200)));
+
+        // when
+        int exitCode = commandLine.execute("job.failed");
+
+        // then
+        assertThat(exitCode).isEqualTo(1);
+        assertThat(testConsole.errors())
+                .isEqualToIgnoringNewLines("x You've sent a lot of test events. Try again in 12 seconds.");
+    }
+
+    @Test
+    void shouldShowApiMessageWhenTooManyTestEventsWereSentWithoutWait() {
 
         // given
         given(configManager.load()).willReturn(createConfig(ACCESS_TOKEN));
@@ -109,8 +128,22 @@ class TriggerCommandTest {
 
         // then
         assertThat(exitCode).isEqualTo(1);
-        assertThat(testConsole.errors())
-                .isEqualToIgnoringNewLines("x Sending job.failed failed: Too many test events. Try again in a minute.");
+        assertThat(testConsole.errors()).isEqualToIgnoringNewLines("x Too many test events. Try again in a minute.");
+    }
+
+    @Test
+    void shouldShowApiMessageWhenSendingFails() {
+
+        // given
+        given(configManager.load()).willReturn(createConfig(ACCESS_TOKEN));
+        given(webhookClient.trigger(ACCESS_TOKEN, "job.failed")).willThrow(new ApiException(500, "Something went wrong."));
+
+        // when
+        int exitCode = commandLine.execute("job.failed");
+
+        // then
+        assertThat(exitCode).isEqualTo(1);
+        assertThat(testConsole.errors()).isEqualToIgnoringNewLines("x Sending job.failed failed: Something went wrong.");
     }
 
     private static WhaleDocConfig createConfig(String accessToken) {

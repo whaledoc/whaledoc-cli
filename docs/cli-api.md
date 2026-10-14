@@ -121,6 +121,9 @@ The API makes an event of that type with sample data and `"test": true`, and sen
 workspace the login belongs to, so a running `whaledoc listen` receives it. Test events go only to that stream, never
 to the workspace's webhook endpoints. An unknown type is refused with `400`.
 
+Test events are limited to 60 a minute per login, with bursts of up to 20. Over the limit, respond with `429` and a
+`Retry-After` header (seconds, or an HTTP date); the CLI tells the user how long to wait.
+
 ### Forwarding
 
 With `--forward-to`, the CLI posts each event's `data` to the user's local URL with these headers:
