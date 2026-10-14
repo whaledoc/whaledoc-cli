@@ -1,7 +1,7 @@
 package io.whaledoc.http;
 
 /**
- * Paths of the WhaleDoc API used by the CLI. The full contract is described in docs/cli-api.md.
+ * Paths of the WhaleDoc API used by the CLI.
  */
 public final class ApiConstants {
 
