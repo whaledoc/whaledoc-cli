@@ -21,12 +21,12 @@ class SseEventReaderTest {
 
         // given
         InputStream stream = createStream("""
-                event: document.created
+                event: job.completed
                 data: first line
                 data: second line
 
                 """);
-        SseEvent expectedEvent = new SseEvent("document.created", "first line\nsecond line", null);
+        SseEvent expectedEvent = new SseEvent("job.completed", "first line\nsecond line", null);
 
         // when
         reader.read(stream, () -> true);

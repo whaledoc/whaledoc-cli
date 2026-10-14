@@ -1,15 +1,20 @@
 package io.whaledoc.webhook;
 
-import java.util.Set;
+import java.util.List;
 
 public final class WebhookEvents {
 
     public static final String ALL = "*";
 
-    public static final Set<String> ALLOWED = Set.of(
-            "document.created",
-            "document.completed",
-            "document.failed"
+    /** Every webhook event type, in the order help texts list them. */
+    public static final List<String> ALLOWED = List.of(
+            "job.completed",
+            "job.failed",
+            "job.cancelled",
+            "usage.limit_reached",
+            "usage.spending_cap_reached",
+            "template.published",
+            "template.deleted"
     );
 
     private WebhookEvents() {

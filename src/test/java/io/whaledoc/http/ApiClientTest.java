@@ -72,7 +72,7 @@ class ApiClientTest {
     private void givenDocumentCanBeCreated() {
 
         stubFor(post(urlEqualTo("/documents"))
-                .withHeader("X-API-Version", equalTo(ApiConstants.API_VERSION))
+                .withHeader(ApiConstants.API_VERSION_HEADER, equalTo(ApiConstants.API_VERSION))
                 .withHeader("Content-Type", equalTo("application/json"))
                 .withRequestBody(equalToJson("""
                         { "name": "Invoice" }
@@ -86,7 +86,7 @@ class ApiClientTest {
 
         stubFor(post(urlEqualTo("/cli/auth/logout"))
                 .withHeader("Authorization", equalTo("Bearer " + accessToken))
-                .withHeader("X-API-Version", equalTo(ApiConstants.API_VERSION))
+                .withHeader(ApiConstants.API_VERSION_HEADER, equalTo(ApiConstants.API_VERSION))
                 .willReturn(noContent()));
     }
 

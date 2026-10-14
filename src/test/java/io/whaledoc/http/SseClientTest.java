@@ -33,7 +33,7 @@ class SseClientTest {
     private static final String EVENT_STREAM = """
             : keep-alive
 
-            event: document.created
+            event: job.completed
             id: 42
             data: {"id":"doc-1",
             data: "status":"created"}
@@ -244,6 +244,7 @@ class SseClientTest {
 
         stubFor(get(urlEqualTo(path))
                 .withHeader("Accept", equalTo("text/event-stream"))
+                .withHeader(ApiConstants.API_VERSION_HEADER, equalTo(ApiConstants.API_VERSION))
                 .willReturn(aResponse()
                         .withHeader("Content-Type", "text/event-stream")
                         .withBody(body)));
@@ -259,6 +260,6 @@ class SseClientTest {
     }
 
     private SseEvent createExpectedEvent() {
-        return new SseEvent("document.created", "{\"id\":\"doc-1\",\n\"status\":\"created\"}", "42");
+        return new SseEvent("job.completed", "{\"id\":\"doc-1\",\n\"status\":\"created\"}", "42");
     }
 }

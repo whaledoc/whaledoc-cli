@@ -10,13 +10,15 @@ This is the contract between the WhaleDoc CLI and the WhaleDoc API: the endpoint
 
 | Header | Value |
 |---|---|
-| `X-API-Version` | `v1` |
+| `API-Version` | `1` |
 | `Accept` | `application/json`, or `text/event-stream` for event streams |
 | `Authorization` | `Bearer <access token>`, on endpoints that require a login |
 
+**Versions.** The API version is a whole number. A request without `API-Version` is refused with `400`.
+
 **Compatibility.** The CLI ignores unknown fields in JSON responses, so adding fields is always safe. Removing or renaming fields, or changing their meaning, breaks CLIs that are already installed and needs a new API version.
 
-**Errors.** Any status outside 2xx is an error. The response body is shown to the user, so it should be a short, human-readable message. For event streams:
+**Errors.** Any status outside 2xx is an error, answered with [RFC 9457 problem details](https://www.rfc-editor.org/rfc/rfc9457) (`application/problem+json`). The CLI shows the `detail` field to the user, or `title` when there is no `detail`, so it should be a short, human-readable sentence. Any other body is shown as sent. For event streams:
 
 | Status | What the CLI does |
 |---|---|
@@ -39,8 +41,8 @@ Login uses a device-style flow: the CLI starts a session, the user approves it i
 
 1. The CLI creates a login session.
 2. It shows the user an authentication code and opens the authorization URL in the browser.
-3. The browser shows the same code. The user checks that they match and approves the login. This prevents someone from tricking a user into approving a session started on another machine.
-4. The API sends the access token to the CLI over the session's event stream.
+3. The browser shows the same code. The user signs in if needed, checks that the codes match, picks the workspace the CLI will work in and approves the login. Comparing the codes prevents someone from tricking a user into approving a session started on another machine.
+4. The API sends the access token to the CLI over the session's event stream. The token belongs to the chosen workspace; to work in another one, the user logs in again.
 
 ### Create a login session
 
@@ -72,11 +74,11 @@ When the user approves the login, send one event and close the stream:
 
 ```
 event: authenticated
-data: {"accessToken": "..."}
+data: {"accessToken": "...", "workspace": {"id": "...", "name": "Acme"}}
 
 ```
 
-Respond with `404` for unknown or expired sessions; the CLI stops waiting right away.
+The CLI shows the workspace's name after logging in. Respond with `404` for unknown or expired sessions; the CLI stops waiting right away.
 
 ### Log out
 
@@ -92,14 +94,35 @@ Streams the webhook events of the user's account while `whaledoc listen` runs:
 
 ```
 id: evt_01J9Z3K4XQ
-event: document.created
-data: {"id": "doc_123", "status": "created", ...}
+event: job.completed
+data: {...}
 
 ```
 
-- `event` is the webhook event type. The CLI currently knows `document.created`, `document.completed` and `document.failed`; it filters by type on its side, so the stream may contain all types.
+- `event` is the webhook event type: `job.completed`, `job.failed`, `job.cancelled`, `usage.limit_reached`, `usage.spending_cap_reached`, `template.published` or `template.deleted`. The CLI filters by type on its side, so the stream may contain all types, and it ignores types it doesn't know yet.
 - `data` is the same JSON payload a real webhook delivery would have.
 - `id` must be unique and increasing so `Last-Event-ID` can resume the stream.
+
+### Send a test event
+
+`POST /cli/webhooks/test-events` with `Authorization`, used by `whaledoc trigger <event>`:
+
+```json
+{ "type": "job.completed" }
+```
+
+Response `201 Created`:
+
+```json
+{ "id": "evt_01J9Z3K4XR", "type": "job.completed" }
+```
+
+The API makes an event of that type with sample data and `"test": true`, and sends it to the event stream of the
+workspace the login belongs to, so a running `whaledoc listen` receives it. Test events go only to that stream, never
+to the workspace's webhook endpoints. An unknown type is refused with `400`.
+
+Test events are limited to 60 a minute per login, with bursts of up to 20. Over the limit, respond with `429` and a
+`Retry-After` header (seconds, or an HTTP date); the CLI tells the user how long to wait.
 
 ### Forwarding
 
@@ -108,7 +131,7 @@ With `--forward-to`, the CLI posts each event's `data` to the user's local URL w
 | Header | Value |
 |---|---|
 | `Content-Type` | `application/json` |
-| `WhaleDoc-Event` | the event type, e.g. `document.created` |
+| `WhaleDoc-Event` | the event type, e.g. `job.completed` |
 | `WhaleDoc-Event-Id` | the event ID |
 
 When real webhook deliveries are designed, they should use the same headers, so a local endpoint behaves the same way in development and production.

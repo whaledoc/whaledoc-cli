@@ -78,18 +78,35 @@ class AuthClientTest {
     }
 
     @Test
-    void shouldReturnAccessTokenWhenAuthenticationEventArrives() {
+    void shouldReturnAccessTokenAndWorkspaceWhenAuthenticationEventArrives() {
+
+        // given
+        givenAuthenticationEventIsSent("""
+                { "accessToken": "access-token", "workspace": { "id": "ws-1", "name": "Acme" } }
+                """);
+        AuthenticationEvent expectedEvent = new AuthenticationEvent("access-token", "Acme");
+
+        // when
+        CompletableFuture<AuthenticationEvent> authentication = authClient.waitForAuthentication(createExpectedSession());
+
+        // then
+        assertThat(authentication).succeedsWithin(TIMEOUT).isEqualTo(expectedEvent);
+    }
+
+    @Test
+    void shouldReturnAccessTokenWhenAuthenticationEventHasNoWorkspace() {
 
         // given
         givenAuthenticationEventIsSent("""
                 { "accessToken": "access-token" }
                 """);
+        AuthenticationEvent expectedEvent = new AuthenticationEvent("access-token", null);
 
         // when
-        CompletableFuture<String> actualAccessToken = authClient.waitForAuthentication(createExpectedSession());
+        CompletableFuture<AuthenticationEvent> authentication = authClient.waitForAuthentication(createExpectedSession());
 
         // then
-        assertThat(actualAccessToken).succeedsWithin(TIMEOUT).isEqualTo("access-token");
+        assertThat(authentication).succeedsWithin(TIMEOUT).isEqualTo(expectedEvent);
     }
 
     @Test
@@ -101,10 +118,10 @@ class AuthClientTest {
                 """);
 
         // when
-        CompletableFuture<String> actualAccessToken = authClient.waitForAuthentication(createExpectedSession());
+        CompletableFuture<AuthenticationEvent> authentication = authClient.waitForAuthentication(createExpectedSession());
 
         // then
-        assertThat(actualAccessToken)
+        assertThat(authentication)
                 .failsWithin(TIMEOUT)
                 .withThrowableOfType(ExecutionException.class)
                 .havingCause()
@@ -119,10 +136,10 @@ class AuthClientTest {
         stubFor(get(urlEqualTo("/cli/auth/sessions/" + SESSION_ID + "/events")).willReturn(notFound()));
 
         // when
-        CompletableFuture<String> actualAccessToken = authClient.waitForAuthentication(createExpectedSession());
+        CompletableFuture<AuthenticationEvent> authentication = authClient.waitForAuthentication(createExpectedSession());
 
         // then
-        assertThat(actualAccessToken)
+        assertThat(authentication)
                 .failsWithin(TIMEOUT)
                 .withThrowableOfType(ExecutionException.class)
                 .havingCause()

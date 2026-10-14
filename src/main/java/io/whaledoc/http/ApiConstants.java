@@ -5,7 +5,8 @@ package io.whaledoc.http;
  */
 public final class ApiConstants {
 
-    public static final String API_VERSION = "v1";
+    public static final String API_VERSION_HEADER = "API-Version";
+    public static final String API_VERSION = "1";
 
     // auth
     public static final String AUTH_SESSIONS = "/cli/auth/sessions";
@@ -14,6 +15,7 @@ public final class ApiConstants {
 
     // webhook listener
     public static final String WEBHOOK_EVENTS = "/cli/webhooks/events";
+    public static final String WEBHOOK_TEST_EVENTS = "/cli/webhooks/test-events";
 
     private ApiConstants() {
     }

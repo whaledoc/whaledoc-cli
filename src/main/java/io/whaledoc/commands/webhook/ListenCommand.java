@@ -41,7 +41,7 @@ import java.util.stream.Collectors;
                         
                          @|bold Examples:|@
                             whaledoc listen
-                            whaledoc listen --events document.created,document.completed \\
+                            whaledoc listen --events job.completed,job.failed \\
                             --forward-to localhost:8080/events
                         """
         },

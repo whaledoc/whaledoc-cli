@@ -191,7 +191,7 @@ public final class SseClient {
         HttpRequest.Builder request = HttpRequest.newBuilder(uri)
                 .header("Accept", SSE_MEDIA_TYPE)
                 .header("Cache-Control", "no-cache")
-                .header("X-API-Version", ApiConstants.API_VERSION);
+                .header(ApiConstants.API_VERSION_HEADER, ApiConstants.API_VERSION);
 
         if (StringUtils.isNotBlank(accessToken)) {
             request.header("Authorization", "Bearer " + accessToken);
@@ -219,7 +219,7 @@ public final class SseClient {
         if (statusCode < 200 || statusCode >= 300) {
 
             try (InputStream body = response.body()) {
-                throw new ApiException(statusCode, new String(body.readAllBytes(), StandardCharsets.UTF_8));
+                throw ErrorResponses.toException(statusCode, new String(body.readAllBytes(), StandardCharsets.UTF_8), response.headers());
             }
         }
 

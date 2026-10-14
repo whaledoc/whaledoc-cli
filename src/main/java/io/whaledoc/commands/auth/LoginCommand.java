@@ -2,6 +2,7 @@ package io.whaledoc.commands.auth;
 
 import io.whaledoc.auth.AuthClient;
 import io.whaledoc.auth.AuthSession;
+import io.whaledoc.auth.AuthenticationEvent;
 import io.whaledoc.config.ConfigManager;
 import io.whaledoc.config.WhaleDocConfig;
 import io.whaledoc.console.Console;
@@ -44,19 +45,22 @@ public class LoginCommand implements Callable<Integer> {
 
         try {
             AuthSession session = authClient.createSession(config.cliId());
-            CompletableFuture<String> accessToken = authClient.waitForAuthentication(session);
+            CompletableFuture<AuthenticationEvent> authentication = authClient.waitForAuthentication(session);
 
             printInstructions(session);
-            openBrowserOnEnter(session.authorizationUrl(), accessToken);
+            openBrowserOnEnter(session.authorizationUrl(), authentication);
 
+            AuthenticationEvent approved = awaitAuthentication(authentication);
             configManager.saveToFile(
                     WhaleDocConfig.builder()
                             .cliId(config.cliId())
-                            .accessToken(awaitAccessToken(accessToken))
+                            .accessToken(approved.accessToken())
                             .build()
             );
 
-            console.success("Logged in");
+            console.success(approved.workspace()
+                    .map(workspace -> "Logged in to " + console.bold(workspace))
+                    .orElse("Logged in"));
             return 0;
 
         } catch (ApiException e) {
@@ -78,23 +82,23 @@ public class LoginCommand implements Callable<Integer> {
     }
 
     // Waits for Enter in the background, so a login approved through the printed URL finishes without it
-    private void openBrowserOnEnter(URI authorizationUrl, CompletableFuture<String> accessToken) {
+    private void openBrowserOnEnter(URI authorizationUrl, CompletableFuture<AuthenticationEvent> authentication) {
 
         Thread.ofVirtual().start(() -> {
 
-            if (console.waitForEnter() && !accessToken.isDone() && !browserLauncher.open(authorizationUrl)) {
+            if (console.waitForEnter() && !authentication.isDone() && !browserLauncher.open(authorizationUrl)) {
                 console.warning("Unable to open a browser. Please visit the URL above.");
             }
         });
     }
 
-    private String awaitAccessToken(CompletableFuture<String> accessToken) {
+    private AuthenticationEvent awaitAuthentication(CompletableFuture<AuthenticationEvent> authentication) {
 
         Spinner spinner = console.spinner("Waiting for you to approve the login... " + console.dim("(^C to quit)"));
         spinner.start();
 
         try {
-            return accessToken.get();
+            return authentication.get();
 
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();

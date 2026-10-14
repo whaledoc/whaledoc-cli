@@ -85,7 +85,7 @@ class LogoutCommandTest {
 
         // then
         assertThat(exitCode).isEqualTo(1);
-        assertThat(testConsole.errors()).isEqualToIgnoringNewLines("x Logout failed: API request failed with status 500: Internal Server Error");
+        assertThat(testConsole.errors()).isEqualToIgnoringNewLines("x Logout failed: Internal Server Error");
         then(configManager).should(never()).saveToFile(any());
     }
 

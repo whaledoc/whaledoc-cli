@@ -4,6 +4,7 @@ import io.whaledoc.commands.auth.LoginCommand;
 import io.whaledoc.commands.auth.LogoutCommand;
 import io.whaledoc.commands.update.UpdateCommand;
 import io.whaledoc.commands.webhook.ListenCommand;
+import io.whaledoc.commands.webhook.TriggerCommand;
 import io.whaledoc.config.AppDirectories;
 import io.whaledoc.update.UpdateService;
 import io.whaledoc.utility.VersionProvider;
@@ -18,6 +19,7 @@ import static picocli.CommandLine.*;
                 LoginCommand.class,
                 LogoutCommand.class,
                 ListenCommand.class,
+                TriggerCommand.class,
                 UpdateCommand.class
         },
         mixinStandardHelpOptions = true,

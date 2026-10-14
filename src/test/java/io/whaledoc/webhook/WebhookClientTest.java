@@ -37,8 +37,8 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 @WireMockTest
 class WebhookClientTest {
 
-    private static final SseEvent CREATED_EVENT = new SseEvent("document.created", "{\"id\":\"doc-1\"}", "1");
-    private static final SseEvent FAILED_EVENT = new SseEvent("document.failed", "{\"id\":\"doc-2\"}", "2");
+    private static final SseEvent CREATED_EVENT = new SseEvent("job.completed", "{\"id\":\"job-1\"}", "1");
+    private static final SseEvent FAILED_EVENT = new SseEvent("job.failed", "{\"id\":\"job-2\"}", "2");
 
     private WebhookClient webhookClient;
     private String baseUrl;
@@ -74,7 +74,7 @@ class WebhookClientTest {
         assertThat(status).isEqualTo(200);
         verify(postRequestedFor(urlEqualTo("/events"))
                 .withHeader("Content-Type", equalTo("application/json"))
-                .withHeader("WhaleDoc-Event", equalTo("document.created"))
+                .withHeader("WhaleDoc-Event", equalTo("job.completed"))
                 .withHeader("WhaleDoc-Event-Id", equalTo("1"))
                 .withRequestBody(equalToJson(CREATED_EVENT.data())));
     }
@@ -147,7 +147,7 @@ class WebhookClientTest {
         CompletableFuture<SseEvent> createdEventReceived = new CompletableFuture<>();
 
         // when
-        connection = webhookClient.listen("access-token", Set.of("document.created"), event -> {
+        connection = webhookClient.listen("access-token", Set.of("job.completed"), event -> {
             receivedEvents.add(event);
             createdEventReceived.complete(event);
         });
@@ -170,6 +170,35 @@ class WebhookClientTest {
         assertThat(thrown)
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("accessToken is required");
+    }
+
+    @Test
+    void shouldReturnTriggeredEventWhenApiAcceptsTestEvent() {
+
+        // given
+        givenTestEventIsAccepted("job.completed");
+        TriggeredEvent expectedEvent = new TriggeredEvent("evt_01J9Z3K4XR", "job.completed");
+
+        // when
+        TriggeredEvent triggeredEvent = webhookClient.trigger("access-token", "job.completed");
+
+        // then
+        assertThat(triggeredEvent).isEqualTo(expectedEvent);
+    }
+
+    private void givenTestEventIsAccepted(String type) {
+
+        stubFor(post(urlEqualTo("/cli/webhooks/test-events"))
+                .withHeader("Authorization", equalTo("Bearer access-token"))
+                .withRequestBody(equalToJson("""
+                        { "type": "%s" }
+                        """.formatted(type)))
+                .willReturn(aResponse()
+                        .withStatus(201)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("""
+                                { "id": "evt_01J9Z3K4XR", "type": "%s" }
+                                """.formatted(type))));
     }
 
     private void givenWebhookEventsAreStreamed(SseEvent... events) {
