@@ -1,9 +1,11 @@
 name: Build
 
+# The native executables for every platform, after merging. Pull requests only run the tests (tests.yml);
+# run this workflow by hand on a branch to check its native build, e.g. after changing the native-image metadata.
+
 on:
   push:
     branches: [main]
-  pull_request:
   workflow_dispatch:
 
 permissions:

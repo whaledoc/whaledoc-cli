@@ -1,0 +1,32 @@
+name: Tests
+
+# Pull requests run the tests on one Linux runner. The native executables for every platform are built
+# only after merging (build.yml) and for releases (release.yml), since those runners cost far more.
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+# A new push to the pull request cancels its run still in progress
+concurrency:
+  group: tests-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: '25'
+          distribution: graalvm-community
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache: maven
+
+      - name: Compile and test
+        run: ./mvnw -B verify
