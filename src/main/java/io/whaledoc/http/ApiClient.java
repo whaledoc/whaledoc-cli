@@ -29,17 +29,12 @@ public final class ApiClient {
 
     public <T> T post(String path, Object requestBody, Class<T> responseType) {
 
-        try {
-            HttpRequest request = newRequest(path)
-                    .header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(requestBody)))
-                    .build();
+        return postJson(newRequest(path), requestBody, responseType);
+    }
 
-            return objectMapper.readValue(send(request), responseType);
+    public <T> T postAuthorized(String path, String accessToken, Object requestBody, Class<T> responseType) {
 
-        } catch (IOException e) {
-            throw new ApiException("Unable to process the API response.", e);
-        }
+        return postJson(newRequest(path).header("Authorization", "Bearer " + accessToken), requestBody, responseType);
     }
 
     public void postAuthorized(String path, String accessToken) {
@@ -54,6 +49,21 @@ public final class ApiClient {
 
     public String baseUrl() {
         return baseUrl;
+    }
+
+    private <T> T postJson(HttpRequest.Builder request, Object requestBody, Class<T> responseType) {
+
+        try {
+            HttpRequest jsonRequest = request
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(requestBody)))
+                    .build();
+
+            return objectMapper.readValue(send(jsonRequest), responseType);
+
+        } catch (IOException e) {
+            throw new ApiException("Unable to process the API response.", e);
+        }
     }
 
     private HttpRequest.Builder newRequest(String path) {

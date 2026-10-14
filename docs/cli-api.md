@@ -103,6 +103,24 @@ data: {...}
 - `data` is the same JSON payload a real webhook delivery would have.
 - `id` must be unique and increasing so `Last-Event-ID` can resume the stream.
 
+### Send a test event
+
+`POST /cli/webhooks/test-events` with `Authorization`, used by `whaledoc trigger <event>`:
+
+```json
+{ "type": "job.completed" }
+```
+
+Response `201 Created`:
+
+```json
+{ "id": "evt_01J9Z3K4XR", "type": "job.completed" }
+```
+
+The API makes an event of that type with sample data and `"test": true`, and sends it to the event stream of the
+workspace the login belongs to, so a running `whaledoc listen` receives it. Test events go only to that stream, never
+to the workspace's webhook endpoints. An unknown type is refused with `400`.
+
 ### Forwarding
 
 With `--forward-to`, the CLI posts each event's `data` to the user's local URL with these headers:

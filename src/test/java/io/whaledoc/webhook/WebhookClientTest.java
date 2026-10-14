@@ -172,6 +172,35 @@ class WebhookClientTest {
                 .hasMessage("accessToken is required");
     }
 
+    @Test
+    void shouldReturnTriggeredEventWhenApiAcceptsTestEvent() {
+
+        // given
+        givenTestEventIsAccepted("job.completed");
+        TriggeredEvent expectedEvent = new TriggeredEvent("evt_01J9Z3K4XR", "job.completed");
+
+        // when
+        TriggeredEvent triggeredEvent = webhookClient.trigger("access-token", "job.completed");
+
+        // then
+        assertThat(triggeredEvent).isEqualTo(expectedEvent);
+    }
+
+    private void givenTestEventIsAccepted(String type) {
+
+        stubFor(post(urlEqualTo("/cli/webhooks/test-events"))
+                .withHeader("Authorization", equalTo("Bearer access-token"))
+                .withRequestBody(equalToJson("""
+                        { "type": "%s" }
+                        """.formatted(type)))
+                .willReturn(aResponse()
+                        .withStatus(201)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("""
+                                { "id": "evt_01J9Z3K4XR", "type": "%s" }
+                                """.formatted(type))));
+    }
+
     private void givenWebhookEventsAreStreamed(SseEvent... events) {
 
         StringBuilder body = new StringBuilder();

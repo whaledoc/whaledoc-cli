@@ -87,6 +87,17 @@ public final class WebhookClient {
         }
     }
 
+    /** Asks the API to send a test event of this type, with sample data, to the logged-in workspace. */
+    public TriggeredEvent trigger(String accessToken, String type) {
+
+        if (StringUtils.isBlank(accessToken)) {
+            throw new IllegalArgumentException("accessToken is required");
+        }
+
+        return apiClient.postAuthorized(ApiConstants.WEBHOOK_TEST_EVENTS, accessToken, new TriggerRequest(type),
+                TriggeredEvent.class);
+    }
+
     public SseConnection listen(String accessToken, Set<String> events, SseListener listener) {
 
         if (StringUtils.isBlank(accessToken)) {
@@ -120,5 +131,8 @@ public final class WebhookClient {
         }
 
         return request.build();
+    }
+
+    private record TriggerRequest(String type) {
     }
 }

@@ -4,6 +4,7 @@ import io.whaledoc.commands.auth.LoginCommand;
 import io.whaledoc.commands.auth.LogoutCommand;
 import io.whaledoc.commands.update.UpdateCommand;
 import io.whaledoc.commands.webhook.ListenCommand;
+import io.whaledoc.commands.webhook.TriggerCommand;
 import io.whaledoc.update.Version;
 import io.whaledoc.utility.BrowserLauncher;
 import io.whaledoc.utility.VersionProvider;
@@ -28,6 +29,7 @@ public final class CommandFactory implements CommandLine.IFactory {
                 LoginCommand.class, () -> new LoginCommand(context.configManager(), context.authClient(), new BrowserLauncher(), context.console()),
                 LogoutCommand.class, () -> new LogoutCommand(context.configManager(), context.authClient(), context.console()),
                 ListenCommand.class, () -> new ListenCommand(context.configManager(), context.webhookClient(), context.console()),
+                TriggerCommand.class, () -> new TriggerCommand(context.configManager(), context.webhookClient(), context.console()),
                 UpdateCommand.class, () -> new UpdateCommand(context.updateService(), Version.parse(context.config().version()), context.console()),
                 VersionProvider.class, () -> new VersionProvider(context.config().version())
         );

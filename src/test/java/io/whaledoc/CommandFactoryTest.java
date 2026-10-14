@@ -57,7 +57,7 @@ class CommandFactoryTest {
         CommandLine commandLine = createCommandLine(output);
 
         // then
-        assertThat(commandLine.getSubcommands()).containsOnlyKeys("login", "logout", "listen", "update");
+        assertThat(commandLine.getSubcommands()).containsOnlyKeys("login", "logout", "listen", "trigger", "update");
     }
 
     private CommandLine createCommandLine(StringWriter output) {

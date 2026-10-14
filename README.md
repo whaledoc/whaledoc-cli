@@ -166,6 +166,18 @@ whaledoc listen \
 
 This makes it possible to develop and test webhook integrations locally without exposing your application to the internet.
 
+### `trigger`
+
+Send a test webhook event with sample data to your workspace:
+
+```sh
+whaledoc trigger job.completed
+```
+
+The event reaches `whaledoc listen` like any other event, marked as a test, so you can try your integration without
+running a real job. Test events don't go to your workspace's webhook endpoints. Any event from
+[Webhook Events](#webhook-events) works.
+
 ### `update`
 
 Update the CLI to the latest version.

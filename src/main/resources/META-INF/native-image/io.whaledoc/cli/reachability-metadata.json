@@ -19,6 +19,18 @@
       "allDeclaredFields": true
     },
     {
+      "type": "io.whaledoc.webhook.WebhookClient$TriggerRequest",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
+      "type": "io.whaledoc.webhook.TriggeredEvent",
+      "allDeclaredConstructors": true,
+      "allDeclaredMethods": true,
+      "allDeclaredFields": true
+    },
+    {
       "type": "ch.qos.logback.classic.encoder.PatternLayoutEncoder",
       "methods": [
         {
