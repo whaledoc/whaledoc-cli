@@ -111,6 +111,13 @@ whaledoc login
 The CLI opens your browser so you can authorize access to your WhaleDoc account. Check that the browser shows the
 same code as your terminal, then choose the workspace the CLI works in. To switch workspaces, log in again.
 
+Your sessions in WhaleDoc (Settings → Security) list the login under this computer's name. To use another name, for
+example on a shared or CI machine:
+
+```sh
+whaledoc login --device-name ci-runner
+```
+
 ### `logout`
 
 Log out of your WhaleDoc account.

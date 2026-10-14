@@ -13,12 +13,15 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import picocli.CommandLine;
 
 import java.net.URI;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.never;
@@ -96,11 +99,29 @@ class LoginCommandTest {
     }
 
     @Test
+    void shouldNameLoginAfterDeviceNameWhenOneIsGiven() {
+
+        // given
+        given(configManager.load()).willReturn(createConfig(null));
+        given(authClient.createSession(CLI_ID, Optional.of("ci-runner"))).willReturn(SESSION);
+        given(authClient.waitForAuthentication(SESSION)).willReturn(CompletableFuture.completedFuture(APPROVED));
+        LoginCommand loginCommand = createLoginCommand("");
+        new CommandLine(loginCommand).parseArgs("--device-name", "ci-runner");
+
+        // when
+        Integer exitCode = loginCommand.call();
+
+        // then
+        assertThat(exitCode).isZero();
+        then(authClient).should().createSession(CLI_ID, Optional.of("ci-runner"));
+    }
+
+    @Test
     void shouldNotWaitForApprovalWhenSessionCannotBeCreated() {
 
         // given
         given(configManager.load()).willReturn(createConfig(null));
-        given(authClient.createSession(CLI_ID)).willThrow(new ApiException("Unable to reach WhaleDoc."));
+        given(authClient.createSession(eq(CLI_ID), any())).willThrow(new ApiException("Unable to reach WhaleDoc."));
 
         // when
         Integer exitCode = createLoginCommand("").call();
@@ -113,7 +134,7 @@ class LoginCommandTest {
     private void givenLoginSessionIsCreated() {
 
         given(configManager.load()).willReturn(createConfig(null));
-        given(authClient.createSession(CLI_ID)).willReturn(SESSION);
+        given(authClient.createSession(eq(CLI_ID), any())).willReturn(SESSION);
     }
 
     // The login only completes after the browser was opened, as when the user approves it there

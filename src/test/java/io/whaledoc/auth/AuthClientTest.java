@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.time.Duration;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 
@@ -56,7 +57,7 @@ class AuthClientTest {
         AuthSession expectedSession = createExpectedSession();
 
         // when
-        AuthSession actualSession = authClient.createSession(CLI_ID);
+        AuthSession actualSession = authClient.createSession(CLI_ID, Optional.of("dev-laptop"));
 
         // then
         assertThat(actualSession).usingRecursiveComparison().isEqualTo(expectedSession);
@@ -69,7 +70,7 @@ class AuthClientTest {
         String cliId = " ";
 
         // when
-        Throwable thrown = catchThrowable(() -> authClient.createSession(cliId));
+        Throwable thrown = catchThrowable(() -> authClient.createSession(cliId, Optional.empty()));
 
         // then
         assertThat(thrown)
@@ -160,11 +161,34 @@ class AuthClientTest {
                 .withHeader("Authorization", equalTo("Bearer access-token")));
     }
 
+    @Test
+    void shouldLeaveDeviceNameOutWhenComputerHasNoName() {
+
+        // given
+        stubFor(post(urlEqualTo("/cli/auth/sessions"))
+                .withRequestBody(equalToJson("""
+                        { "cliId": "cli-1" }
+                        """))
+                .willReturn(okJson("""
+                        {
+                          "sessionId": "session-1",
+                          "authorizationUrl": "https://app.whaledoc.io/cli/authorize/session-1",
+                          "authCode": "ABCD-1234"
+                        }
+                        """)));
+
+        // when
+        Throwable thrown = catchThrowable(() -> authClient.createSession(CLI_ID, Optional.empty()));
+
+        // then
+        assertThat(thrown).isNull();
+    }
+
     private void givenSessionCanBeCreated() {
 
         stubFor(post(urlEqualTo("/cli/auth/sessions"))
                 .withRequestBody(equalToJson("""
-                        { "cliId": "cli-1" }
+                        { "cliId": "cli-1", "deviceName": "dev-laptop" }
                         """))
                 .willReturn(okJson("""
                         {

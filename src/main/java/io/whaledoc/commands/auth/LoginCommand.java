@@ -9,10 +9,13 @@ import io.whaledoc.console.Console;
 import io.whaledoc.console.Spinner;
 import io.whaledoc.exceptions.ApiException;
 import io.whaledoc.utility.BrowserLauncher;
+import io.whaledoc.utility.ComputerName;
 import lombok.extern.slf4j.Slf4j;
 import picocli.CommandLine.Command;
+import picocli.CommandLine.Option;
 
 import java.net.URI;
+import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -25,6 +28,13 @@ import java.util.concurrent.TimeoutException;
         description = "Log in to your WhaleDoc account."
 )
 public class LoginCommand implements Callable<Integer> {
+
+    @Option(
+            names = {"--device-name"},
+            paramLabel = "string",
+            description = "The name your WhaleDoc sessions show for this login. Defaults to this computer's name."
+    )
+    private String deviceName;
 
     private final ConfigManager configManager;
     private final AuthClient authClient;
@@ -44,7 +54,8 @@ public class LoginCommand implements Callable<Integer> {
         WhaleDocConfig config = configManager.load();
 
         try {
-            AuthSession session = authClient.createSession(config.cliId());
+            AuthSession session = authClient.createSession(config.cliId(),
+                    Optional.ofNullable(deviceName).or(ComputerName::current));
             CompletableFuture<AuthenticationEvent> authentication = authClient.waitForAuthentication(session);
 
             printInstructions(session);
