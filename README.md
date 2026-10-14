@@ -94,8 +94,8 @@ Example:
 ```text
 Listening for webhook events. (^C to quit)
 
-2026-10-05 12:30:41  --> document.created
-2026-10-05 12:30:45  --> document.completed
+2026-10-05 12:30:41  --> template.published
+2026-10-05 12:30:45  --> job.completed
 ```
 
 ## Commands
@@ -135,20 +135,16 @@ By default, the CLI listens for all supported webhook events.
 Listen for a specific event:
 
 ```sh
-whaledoc listen --events document.created
+whaledoc listen --events job.completed
 ```
 
 Listen for multiple events:
 
 ```sh
-whaledoc listen --events document.created,document.completed
+whaledoc listen --events job.completed,job.failed
 ```
 
-Supported events:
-
-- `document.created`
-- `document.completed`
-- `document.failed`
+The supported events are listed under [Webhook Events](#webhook-events).
 
 ### Forwarding events
 
@@ -164,7 +160,7 @@ You can combine event filtering and forwarding:
 
 ```sh
 whaledoc listen \
-  --events document.created,document.completed \
+  --events job.completed,job.failed \
   --forward-to http://localhost:8080/events
 ```
 
@@ -182,13 +178,17 @@ The CLI downloads the release for your platform, verifies its checksum, and repl
 
 ## Webhook Events
 
-The WhaleDoc CLI currently supports the following webhook events:
+The WhaleDoc CLI supports these webhook events:
 
 | Event | Description |
 |---|---|
-| `document.created` | A document has been created |
-| `document.completed` | Document generation has completed |
-| `document.failed` | Document generation has failed |
+| `job.completed` | A job finished and made at least one document |
+| `job.failed` | A job finished without making any documents |
+| `job.cancelled` | A job was cancelled |
+| `usage.limit_reached` | The workspace used all the documents its plan includes |
+| `usage.spending_cap_reached` | Extra documents stopped at the workspace's spending cap |
+| `template.published` | A template version was published |
+| `template.deleted` | A template was deleted |
 
 ## Help
 

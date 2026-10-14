@@ -38,7 +38,7 @@ class ListenCommandTest {
 
     private static final String ACCESS_TOKEN = "access-token";
     private static final String FORWARD_URL = "http://localhost:8080/events";
-    private static final SseEvent EVENT = new SseEvent("document.created", "{\"id\":\"doc-1\"}", "1");
+    private static final SseEvent EVENT = new SseEvent("job.completed", "{\"id\":\"job-1\"}", "1");
 
     @Mock
     private ConfigManager configManager;
@@ -111,11 +111,11 @@ class ListenCommandTest {
         givenUserIsLoggedInAndListening();
 
         // when
-        int exitCode = commandLine.execute("--events", "document.created,document.failed");
+        int exitCode = commandLine.execute("--events", "job.completed,job.failed");
 
         // then
         assertThat(exitCode).isZero();
-        then(webhookClient).should().listen(eq(ACCESS_TOKEN), eq(Set.of("document.created", "document.failed")), any());
+        then(webhookClient).should().listen(eq(ACCESS_TOKEN), eq(Set.of("job.completed", "job.failed")), any());
     }
 
     @Test
@@ -125,7 +125,7 @@ class ListenCommandTest {
         given(configManager.load()).willReturn(createConfig(ACCESS_TOKEN));
 
         // when
-        int exitCode = commandLine.execute("--events", "document.deleted");
+        int exitCode = commandLine.execute("--events", "document.created");
 
         // then
         assertThat(exitCode).isEqualTo(2);
@@ -172,7 +172,7 @@ class ListenCommandTest {
         listener.onEvent(EVENT);
 
         // then
-        assertThat(testConsole.output()).containsPattern("-> document\\.created +\\[200]");
+        assertThat(testConsole.output()).containsPattern("-> job\\.completed +\\[200]");
     }
 
     @Test

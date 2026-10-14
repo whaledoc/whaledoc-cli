@@ -94,12 +94,12 @@ Streams the webhook events of the user's account while `whaledoc listen` runs:
 
 ```
 id: evt_01J9Z3K4XQ
-event: document.created
-data: {"id": "doc_123", "status": "created", ...}
+event: job.completed
+data: {...}
 
 ```
 
-- `event` is the webhook event type. The CLI currently knows `document.created`, `document.completed` and `document.failed`; it filters by type on its side, so the stream may contain all types.
+- `event` is the webhook event type: `job.completed`, `job.failed`, `job.cancelled`, `usage.limit_reached`, `usage.spending_cap_reached`, `template.published` or `template.deleted`. The CLI filters by type on its side, so the stream may contain all types, and it ignores types it doesn't know yet.
 - `data` is the same JSON payload a real webhook delivery would have.
 - `id` must be unique and increasing so `Last-Event-ID` can resume the stream.
 
@@ -110,7 +110,7 @@ With `--forward-to`, the CLI posts each event's `data` to the user's local URL w
 | Header | Value |
 |---|---|
 | `Content-Type` | `application/json` |
-| `WhaleDoc-Event` | the event type, e.g. `document.created` |
+| `WhaleDoc-Event` | the event type, e.g. `job.completed` |
 | `WhaleDoc-Event-Id` | the event ID |
 
 When real webhook deliveries are designed, they should use the same headers, so a local endpoint behaves the same way in development and production.
