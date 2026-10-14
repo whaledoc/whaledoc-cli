@@ -9,8 +9,9 @@ public class ApiException extends RuntimeException {
         this.statusCode = -1;
     }
 
-    public ApiException(int statusCode, String responseBody) {
-        super("API request failed with status " + statusCode + ": " + responseBody);
+    /** A response outside 2xx; the message is what the user sees. */
+    public ApiException(int statusCode, String message) {
+        super(message);
         this.statusCode = statusCode;
     }
 

@@ -70,7 +70,7 @@ public final class ApiClient {
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                throw new ApiException(response.statusCode(), response.body());
+                throw ErrorResponses.toException(response.statusCode(), response.body());
             }
 
             return response.body();

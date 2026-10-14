@@ -18,7 +18,7 @@ This is the contract between the WhaleDoc CLI and the WhaleDoc API: the endpoint
 
 **Compatibility.** The CLI ignores unknown fields in JSON responses, so adding fields is always safe. Removing or renaming fields, or changing their meaning, breaks CLIs that are already installed and needs a new API version.
 
-**Errors.** Any status outside 2xx is an error. The response body is shown to the user, so it should be a short, human-readable message. For event streams:
+**Errors.** Any status outside 2xx is an error, answered with [RFC 9457 problem details](https://www.rfc-editor.org/rfc/rfc9457) (`application/problem+json`). The CLI shows the `detail` field to the user, or `title` when there is no `detail`, so it should be a short, human-readable sentence. Any other body is shown as sent. For event streams:
 
 | Status | What the CLI does |
 |---|---|

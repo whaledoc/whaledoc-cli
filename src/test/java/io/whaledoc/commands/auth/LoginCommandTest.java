@@ -88,7 +88,7 @@ class LoginCommandTest {
 
         // then
         assertThat(exitCode).isEqualTo(1);
-        assertThat(testConsole.errors()).contains("Login failed: API request failed with status 404: Unknown session");
+        assertThat(testConsole.errors()).contains("Login failed: Unknown session");
         then(configManager).should(never()).saveToFile(any());
     }
 
