@@ -1,5 +1,6 @@
 package io.whaledoc.auth;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.whaledoc.exceptions.ApiException;
@@ -9,6 +10,7 @@ import org.apache.commons.lang3.StringUtils;
 import java.net.URI;
 import java.time.Duration;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
@@ -30,14 +32,15 @@ public final class AuthClient {
         this.objectMapper = objectMapper;
     }
 
-    public AuthSession createSession(String cliId) {
+    /** Starts a login for this installation, named after the computer it runs on when there is a name. */
+    public AuthSession createSession(String cliId, Optional<String> deviceName) {
 
         if (StringUtils.isBlank(cliId)) {
             throw new IllegalArgumentException("cliId must not be blank");
         }
 
         CreateAuthSessionRequest request =
-                new CreateAuthSessionRequest(cliId);
+                new CreateAuthSessionRequest(cliId, deviceName.orElse(null));
 
         CreateAuthSessionResponse response = apiClient.post(
                 ApiConstants.AUTH_SESSIONS,
@@ -115,7 +118,9 @@ public final class AuthClient {
         apiClient.postAuthorized(ApiConstants.AUTH_LOGOUT, accessToken);
     }
 
-    private record CreateAuthSessionRequest(String cliId) {
+    // No deviceName field at all when the computer has no name, rather than null
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private record CreateAuthSessionRequest(String cliId, String deviceName) {
     }
 
     private record CreateAuthSessionResponse(
