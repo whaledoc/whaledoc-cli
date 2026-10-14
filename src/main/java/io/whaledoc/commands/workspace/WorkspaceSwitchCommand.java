@@ -83,7 +83,17 @@ public class WorkspaceSwitchCommand implements Callable<Integer> {
             return 1;
         }
 
-        Workspace switched = workspaceClient.switchTo(token, matches.getFirst().id());
+        Workspace match = matches.getFirst();
+
+        // The switch is idempotent, but saying so is more honest than "Now working in" without a change
+        if (match.current()) {
+
+            spinner.stop();
+            console.success("Already working in " + console.bold(match.name()) + ".");
+            return 0;
+        }
+
+        Workspace switched = workspaceClient.switchTo(token, match.id());
         spinner.stop();
         console.success("Now working in " + console.bold(switched.name()));
         return 0;

@@ -71,6 +71,22 @@ class WorkspaceCommandsTest {
     }
 
     @Test
+    void shouldSayAlreadyWorkingThereWithoutSwitchingWhenWorkspaceIsCurrent() {
+
+        // given
+        givenLoggedIn();
+        given(workspaceClient.list(ACCESS_TOKEN)).willReturn(List.of(ACME, NORTHWIND));
+
+        // when
+        int exitCode = switchCommand().execute(ACME.slug());
+
+        // then
+        assertThat(exitCode).isZero();
+        assertThat(testConsole.output()).contains("Already working in Acme HR.");
+        then(workspaceClient).should(never()).switchTo(anyString(), anyString());
+    }
+
+    @Test
     void shouldSwitchBySlugWhenNamesAreShared() {
 
         // given
