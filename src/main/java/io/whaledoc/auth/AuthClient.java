@@ -51,24 +51,24 @@ public final class AuthClient {
     /**
      * Waits for the user to approve the login in the browser, over a single event stream.
      *
-     * @return the access token; fails with an {@link ApiException} when the stream fails, or with a
+     * @return the access token and workspace; fails with an {@link ApiException} when the stream fails, or with a
      * {@link java.util.concurrent.TimeoutException} when the login isn't approved within 5 minutes
      */
-    public CompletableFuture<String> waitForAuthentication(AuthSession session) {
+    public CompletableFuture<AuthenticationEvent> waitForAuthentication(AuthSession session) {
 
         Objects.requireNonNull(session, "session must not be null");
 
         URI eventsUri = URI.create(apiClient.baseUrl() + ApiConstants.AUTH_SESSION_EVENTS.formatted(session.sessionId()));
-        CompletableFuture<String> accessToken = new CompletableFuture<>();
+        CompletableFuture<AuthenticationEvent> authentication = new CompletableFuture<>();
 
-        SseConnection connection = sseClient.connect(eventsUri, event -> handleEvent(event, accessToken));
+        SseConnection connection = sseClient.connect(eventsUri, event -> handleEvent(event, authentication));
 
         // Fail right away when the stream ends before a token arrived, instead of waiting for the timeout
-        connection.completion().whenComplete((ignored, error) -> accessToken.completeExceptionally(
+        connection.completion().whenComplete((ignored, error) -> authentication.completeExceptionally(
                 error != null ? unwrap(error) : new ApiException("The login was cancelled.")
         ));
 
-        return accessToken
+        return authentication
                 .orTimeout(AUTHENTICATION_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS)
                 .whenComplete((token, error) -> connection.close());
     }
@@ -77,7 +77,7 @@ public final class AuthClient {
         return error instanceof CompletionException && error.getCause() != null ? error.getCause() : error;
     }
 
-    private void handleEvent(SseEvent event, CompletableFuture<String> authentication) {
+    private void handleEvent(SseEvent event, CompletableFuture<AuthenticationEvent> authentication) {
 
         if (!AUTHENTICATED_EVENT.equals(event.event())) {
             return;
@@ -95,9 +95,10 @@ public final class AuthClient {
                 return;
             }
 
-            authentication.complete(
-                    accessToken.asText()
-            );
+            authentication.complete(new AuthenticationEvent(
+                    accessToken.asText(),
+                    payload.path("workspace").path("name").asText(null)
+            ));
 
         } catch (Exception e) {
             authentication.completeExceptionally(new ApiException("Unable to process authentication event.", e)

@@ -2,6 +2,7 @@ package io.whaledoc.commands.auth;
 
 import io.whaledoc.auth.AuthClient;
 import io.whaledoc.auth.AuthSession;
+import io.whaledoc.auth.AuthenticationEvent;
 import io.whaledoc.config.ConfigManager;
 import io.whaledoc.config.WhaleDocConfig;
 import io.whaledoc.console.TestConsole;
@@ -27,6 +28,7 @@ class LoginCommandTest {
 
     private static final String CLI_ID = "3f1b2c4d-5e6f-4a1b-9c2d-7e8f9a0b1c2d";
     private static final String ACCESS_TOKEN = "access-token";
+    private static final AuthenticationEvent APPROVED = new AuthenticationEvent(ACCESS_TOKEN, "Acme");
     private static final URI AUTHORIZATION_URL = URI.create("https://app.whaledoc.io/cli/authorize/session-1");
     private static final AuthSession SESSION = new AuthSession("session-1", AUTHORIZATION_URL, "ABCD-1234");
 
@@ -46,7 +48,7 @@ class LoginCommandTest {
 
         // given
         givenLoginSessionIsCreated();
-        given(authClient.waitForAuthentication(SESSION)).willReturn(CompletableFuture.completedFuture(ACCESS_TOKEN));
+        given(authClient.waitForAuthentication(SESSION)).willReturn(CompletableFuture.completedFuture(APPROVED));
         WhaleDocConfig expectedConfig = createConfig(ACCESS_TOKEN);
         ArgumentCaptor<WhaleDocConfig> savedConfig = ArgumentCaptor.forClass(WhaleDocConfig.class);
 
@@ -57,6 +59,7 @@ class LoginCommandTest {
         assertThat(exitCode).isZero();
         then(configManager).should().saveToFile(savedConfig.capture());
         assertThat(savedConfig.getValue()).usingRecursiveComparison().isEqualTo(expectedConfig);
+        assertThat(testConsole.output()).contains("Logged in to Acme");
     }
 
     @Test
@@ -64,14 +67,14 @@ class LoginCommandTest {
 
         // given
         givenLoginSessionIsCreated();
-        CompletableFuture<String> accessToken = givenLoginIsApprovedOnceBrowserOpens();
+        CompletableFuture<AuthenticationEvent> authentication = givenLoginIsApprovedOnceBrowserOpens();
 
         // when
         Integer exitCode = createLoginCommand("\n").call();
 
         // then
         assertThat(exitCode).isZero();
-        assertThat(accessToken).isCompletedWithValue(ACCESS_TOKEN);
+        assertThat(authentication).isCompletedWithValue(APPROVED);
         then(browserLauncher).should().open(AUTHORIZATION_URL);
     }
 
@@ -114,13 +117,13 @@ class LoginCommandTest {
     }
 
     // The login only completes after the browser was opened, as when the user approves it there
-    private CompletableFuture<String> givenLoginIsApprovedOnceBrowserOpens() {
+    private CompletableFuture<AuthenticationEvent> givenLoginIsApprovedOnceBrowserOpens() {
 
-        CompletableFuture<String> accessToken = new CompletableFuture<>();
-        given(authClient.waitForAuthentication(SESSION)).willReturn(accessToken);
-        given(browserLauncher.open(AUTHORIZATION_URL)).willAnswer(invocation -> accessToken.complete(ACCESS_TOKEN));
+        CompletableFuture<AuthenticationEvent> authentication = new CompletableFuture<>();
+        given(authClient.waitForAuthentication(SESSION)).willReturn(authentication);
+        given(browserLauncher.open(AUTHORIZATION_URL)).willAnswer(invocation -> authentication.complete(APPROVED));
 
-        return accessToken;
+        return authentication;
     }
 
     private LoginCommand createLoginCommand(String userInput) {

@@ -41,8 +41,8 @@ Login uses a device-style flow: the CLI starts a session, the user approves it i
 
 1. The CLI creates a login session.
 2. It shows the user an authentication code and opens the authorization URL in the browser.
-3. The browser shows the same code. The user checks that they match and approves the login. This prevents someone from tricking a user into approving a session started on another machine.
-4. The API sends the access token to the CLI over the session's event stream.
+3. The browser shows the same code. The user signs in if needed, checks that the codes match, picks the workspace the CLI will work in and approves the login. Comparing the codes prevents someone from tricking a user into approving a session started on another machine.
+4. The API sends the access token to the CLI over the session's event stream. The token belongs to the chosen workspace; to work in another one, the user logs in again.
 
 ### Create a login session
 
@@ -74,11 +74,11 @@ When the user approves the login, send one event and close the stream:
 
 ```
 event: authenticated
-data: {"accessToken": "..."}
+data: {"accessToken": "...", "workspace": {"id": "...", "name": "Acme"}}
 
 ```
 
-Respond with `404` for unknown or expired sessions; the CLI stops waiting right away.
+The CLI shows the workspace's name after logging in. Respond with `404` for unknown or expired sessions; the CLI stops waiting right away.
 
 ### Log out
 

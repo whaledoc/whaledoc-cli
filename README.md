@@ -108,7 +108,8 @@ Authenticate the CLI with your WhaleDoc account.
 whaledoc login
 ```
 
-The CLI opens your browser so you can authorize access to your WhaleDoc account.
+The CLI opens your browser so you can authorize access to your WhaleDoc account. Check that the browser shows the
+same code as your terminal, then choose the workspace the CLI works in. To switch workspaces, log in again.
 
 ### `logout`
 
