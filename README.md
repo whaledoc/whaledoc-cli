@@ -155,7 +155,9 @@ Forward webhook events to a local HTTP endpoint:
 whaledoc listen --forward-to http://localhost:8080/events
 ```
 
-The CLI continues listening for events and forwards each matching event to the specified endpoint.
+The CLI continues listening for events and forwards each matching event to the specified endpoint. These are your
+workspace's real events, and test events you send with `whaledoc trigger`. Your workspace's webhook endpoints still
+receive the real events as usual.
 
 You can combine event filtering and forwarding:
 

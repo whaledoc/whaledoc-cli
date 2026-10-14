@@ -90,7 +90,10 @@ Response `204 No Content`. The access token must stop working afterwards. The CL
 
 `GET /cli/webhooks/events` (event stream, requires `Authorization`)
 
-Streams the webhook events of the user's account while `whaledoc listen` runs:
+Streams the webhook events of the workspace the login belongs to while `whaledoc listen` runs. Every real event
+(a job that ended, a template published, …) goes to every open stream in the workspace, as a copy: delivery to the
+workspace's webhook endpoints carries on as usual. Test events from `whaledoc trigger` go only to the login that sent
+them (see below).
 
 ```
 id: evt_01J9Z3K4XQ
