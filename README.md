@@ -247,15 +247,15 @@ The CLI downloads the release for your platform, verifies its checksum, and repl
 
 ## Webhook Events
 
-The WhaleDoc CLI supports these webhook events:
+WhaleDoc sends these webhook events. The CLI works with any event WhaleDoc sends, also ones added after your CLI version: `whaledoc trigger` and `whaledoc listen --events` take any event name.
 
 | Event | Description |
 |---|---|
 | `job.completed` | A job finished and made at least one document |
 | `job.failed` | A job finished without making any documents |
 | `job.cancelled` | A job was cancelled |
-| `usage.limit_reached` | The workspace used all the documents its plan includes |
-| `usage.spending_cap_reached` | Extra documents stopped at the workspace's spending cap |
+| `usage.document_limit_reached` | The workspace used all the documents its plan includes |
+| `usage.document_spending_cap_reached` | Extra documents stopped at the workspace's spending cap |
 | `template.published` | A template version was published |
 | `template.deleted` | A template was deleted |
 

@@ -1,21 +1,13 @@
 package io.whaledoc.webhook;
 
-import java.util.List;
-
+/**
+ * The CLI keeps no list of event types: WhaleDoc's API knows them, so a new type works without updating the CLI.
+ * {@code whaledoc trigger} sends any name and shows the API's answer for an unknown one, and {@code whaledoc listen}
+ * receives every type unless {@code --events} names some.
+ */
 public final class WebhookEvents {
 
     public static final String ALL = "*";
-
-    /** Every webhook event type, in the order help texts list them. */
-    public static final List<String> ALLOWED = List.of(
-            "job.completed",
-            "job.failed",
-            "job.cancelled",
-            "usage.limit_reached",
-            "usage.spending_cap_reached",
-            "template.published",
-            "template.deleted"
-    );
 
     private WebhookEvents() {
     }

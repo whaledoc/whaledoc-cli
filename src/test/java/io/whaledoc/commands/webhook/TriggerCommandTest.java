@@ -72,14 +72,20 @@ class TriggerCommandTest {
     }
 
     @Test
-    void shouldRejectCommandWhenEventIsUnknown() {
+    void shouldShowApiMessageWhenEventIsUnknown() {
+
+        // given
+        given(configManager.load()).willReturn(createConfig(ACCESS_TOKEN));
+        given(webhookClient.trigger(ACCESS_TOKEN, "document.created")).willThrow(new ApiException(400,
+                "Unknown event type: document.created. Use one of: job.completed, job.failed."));
 
         // when
         int exitCode = commandLine.execute("document.created");
 
         // then
-        assertThat(exitCode).isEqualTo(2);
-        then(webhookClient).shouldHaveNoInteractions();
+        assertThat(exitCode).isEqualTo(1);
+        assertThat(testConsole.errors().lines().toList()).containsExactly("Sending document.created...",
+                "x Unknown event type: document.created. Use one of: job.completed, job.failed.");
     }
 
     @Test
