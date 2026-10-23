@@ -254,8 +254,8 @@ The WhaleDoc CLI supports these webhook events:
 | `job.completed` | A job finished and made at least one document |
 | `job.failed` | A job finished without making any documents |
 | `job.cancelled` | A job was cancelled |
-| `usage.limit_reached` | The workspace used all the documents its plan includes |
-| `usage.spending_cap_reached` | Extra documents stopped at the workspace's spending cap |
+| `usage.document_limit_reached` | The workspace used all the documents its plan includes |
+| `usage.document_spending_cap_reached` | Extra documents stopped at the workspace's spending cap |
 | `template.published` | A template version was published |
 | `template.deleted` | A template was deleted |
 

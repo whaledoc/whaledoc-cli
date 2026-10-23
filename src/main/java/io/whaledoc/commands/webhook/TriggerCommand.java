@@ -32,7 +32,7 @@ import java.util.concurrent.Callable;
 
                          @|bold Events:|@
                             job.completed, job.failed, job.cancelled,
-                            usage.limit_reached, usage.spending_cap_reached,
+                            usage.document_limit_reached, usage.document_spending_cap_reached,
                             template.published, template.deleted
 
                          @|bold Examples:|@
