@@ -247,7 +247,7 @@ The CLI downloads the release for your platform, verifies its checksum, and repl
 
 ## Webhook Events
 
-The WhaleDoc CLI supports these webhook events:
+WhaleDoc sends these webhook events. The CLI works with any event WhaleDoc sends, also ones added after your CLI version: `whaledoc trigger` and `whaledoc listen --events` take any event name.
 
 | Event | Description |
 |---|---|

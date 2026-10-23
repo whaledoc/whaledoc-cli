@@ -7,14 +7,10 @@ import io.whaledoc.console.Spinner;
 import io.whaledoc.exceptions.ApiException;
 import io.whaledoc.webhook.TriggeredEvent;
 import io.whaledoc.webhook.WebhookClient;
-import io.whaledoc.webhook.WebhookEvents;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import picocli.CommandLine;
 import picocli.CommandLine.Command;
-import picocli.CommandLine.Model.CommandSpec;
 import picocli.CommandLine.Parameters;
-import picocli.CommandLine.Spec;
 
 import java.time.Duration;
 import java.util.concurrent.Callable;
@@ -31,9 +27,8 @@ import java.util.concurrent.Callable;
                 """
 
                          @|bold Events:|@
-                            job.completed, job.failed, job.cancelled,
-                            usage.document_limit_reached, usage.document_spending_cap_reached,
-                            template.published, template.deleted
+                            Any webhook event, such as job.completed or template.published.
+                            An unknown event is answered with the list of events you can send.
 
                          @|bold Examples:|@
                             whaledoc trigger job.completed
@@ -51,6 +46,7 @@ import java.util.concurrent.Callable;
 @Slf4j
 public class TriggerCommand implements Callable<Integer> {
 
+    private static final int BAD_REQUEST = 400;
     private static final int TOO_MANY_REQUESTS = 429;
     private static final long SECONDS_PER_MINUTE = 60;
 
@@ -65,9 +61,6 @@ public class TriggerCommand implements Callable<Integer> {
     )
     private String event;
 
-    @Spec
-    private CommandSpec spec;
-
     public TriggerCommand(ConfigManager configManager, WebhookClient webhookClient, Console console) {
         this.configManager = configManager;
         this.webhookClient = webhookClient;
@@ -77,7 +70,6 @@ public class TriggerCommand implements Callable<Integer> {
     @Override
     public Integer call() {
 
-        requireKnownEvent();
         WhaleDocConfig config = configManager.load();
 
         if (StringUtils.isBlank(config.accessToken())) {
@@ -102,14 +94,6 @@ public class TriggerCommand implements Callable<Integer> {
         }
     }
 
-    private void requireKnownEvent() {
-
-        if (!WebhookEvents.ALLOWED.contains(event)) {
-            throw new CommandLine.ParameterException(spec.commandLine(),
-                    "Unknown event: " + event + ". Choose one of: " + String.join(", ", WebhookEvents.ALLOWED));
-        }
-    }
-
     private void printTriggered(TriggeredEvent triggered) {
 
         console.success("Sent " + console.bold(triggered.type()) + " " + console.dim("(" + triggered.id() + ")"));
@@ -120,6 +104,11 @@ public class TriggerCommand implements Callable<Integer> {
 
         if (e.statusCode() == 401 || e.statusCode() == 403) {
             return "Your login is no longer valid. Run " + console.bold("whaledoc login") + " and try again.";
+        }
+
+        // An unknown event: the API's message names the events that can be sent
+        if (e.statusCode() == BAD_REQUEST) {
+            return e.getMessage();
         }
 
         if (e.statusCode() == TOO_MANY_REQUESTS) {

@@ -26,7 +26,6 @@ import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
-import java.util.stream.Collectors;
 
 @Command(
         name = "listen",
@@ -194,23 +193,13 @@ public class ListenCommand implements Callable<Integer> {
         }
     }
 
+    /** The names as given: events are matched by name, so a type the CLI has never seen can be filtered too. */
     private Set<String> resolveEvents() {
 
         Set<String> requestedEvents = Set.copyOf(Arrays.asList(events));
 
         if (requestedEvents.contains(WebhookEvents.ALL)) {
             return Set.of(WebhookEvents.ALL);
-        }
-
-        Set<String> invalidEvents = requestedEvents.stream()
-                .filter(event -> !WebhookEvents.ALLOWED.contains(event))
-                .collect(Collectors.toSet());
-
-        if (!invalidEvents.isEmpty()) {
-            throw new CommandLine.ParameterException(
-                    spec.commandLine(),
-                    "Unknown event(s): " + String.join(", ", invalidEvents)
-            );
         }
 
         return requestedEvents;

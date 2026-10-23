@@ -119,17 +119,17 @@ class ListenCommandTest {
     }
 
     @Test
-    void shouldRejectCommandWhenEventIsUnknown() {
+    void shouldListenForEventWhenTheCliDoesNotKnowItsName() {
 
         // given
-        given(configManager.load()).willReturn(createConfig(ACCESS_TOKEN));
+        givenUserIsLoggedInAndListening();
 
         // when
         int exitCode = commandLine.execute("--events", "document.created");
 
         // then
-        assertThat(exitCode).isEqualTo(2);
-        then(webhookClient).shouldHaveNoInteractions();
+        assertThat(exitCode).isZero();
+        then(webhookClient).should().listen(eq(ACCESS_TOKEN), eq(Set.of("document.created")), any());
     }
 
     @Test
