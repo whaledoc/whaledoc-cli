@@ -479,11 +479,13 @@ Run the complete test suite:
 
 ### Local API
 
-When developing against a local WhaleDoc API instance, build the CLI with the local API URL:
+When developing against a local WhaleDoc instance, build the CLI with the `local` profile. It points the CLI at the API on `http://localhost:8080`, and the event links of `whaledoc listen` at the app on `http://localhost:3000`:
 
 ```sh
-./mvnw clean package -Dwhaledoc.api.url=http://localhost:8080
+./mvnw clean package -Plocal
 ```
+
+Other addresses can be set one by one, for example `-Dwhaledoc.api.url=http://localhost:9090 -Dwhaledoc.app.url=http://localhost:5173`.
 
 ### Native executable
 

@@ -221,6 +221,15 @@
     </build>
 
     <profiles>
+        <!-- Points the CLI at a WhaleDoc API and app running locally: ./mvnw clean package -Plocal -->
+        <profile>
+            <id>local</id>
+            <properties>
+                <whaledoc.api.url>http://localhost:8080</whaledoc.api.url>
+                <whaledoc.app.url>http://localhost:3000</whaledoc.app.url>
+            </properties>
+        </profile>
+
         <!-- Builds a native executable with GraalVM: ./mvnw -Pnative package -->
         <profile>
             <id>native</id>
