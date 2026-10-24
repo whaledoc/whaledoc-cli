@@ -88,7 +88,7 @@ public class ListenCommand implements Callable<Integer> {
 
     @Option(
             names = {"--print-json"},
-            description = "Print each event's JSON instead of a line per event."
+            description = "Also print each event's JSON, under its line."
     )
     private boolean printJson;
 
@@ -321,10 +321,10 @@ public class ListenCommand implements Callable<Integer> {
             return;
         }
 
+        eventPrinter.printEvent(event);
+
         if (printJson) {
-            console.println(webhookClient.prettyJson(event.body()));
-        } else {
-            eventPrinter.printEvent(event);
+            printJson(event);
         }
 
         if (forwardTarget == null) {
@@ -332,14 +332,19 @@ public class ListenCommand implements Callable<Integer> {
         }
 
         // A failing local endpoint is reported per event; listening continues for the next one. Nothing is shown or
-        // reported for a forward cut short by quitting, and only JSON is printed with --print-json
+        // reported for a forward cut short by quitting
         webhookClient.forward(forwardTarget, event).ifPresent(result -> {
-            if (!printJson) {
-                eventPrinter.printForwarded(forwardTarget, event, result);
-            }
-
+            eventPrinter.printForwarded(forwardTarget, event, result);
             reports.execute(() -> report(event, result));
         });
+    }
+
+    /** Set apart by blank lines from the event's line and the next. */
+    private void printJson(SignedEvent event) {
+
+        console.println("");
+        console.println(webhookClient.prettyJson(event.body()));
+        console.println("");
     }
 
     /** In the background, and never shown: a report that fails doesn't stop listening. */

@@ -26,6 +26,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.regex.Pattern;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
@@ -243,7 +244,7 @@ class ListenCommandTest {
     }
 
     @Test
-    void shouldPrintPrettyJsonInsteadOfLinesWhenPrintJsonIsGiven() {
+    void shouldPrintPrettyJsonUnderEventLineWhenPrintJsonIsGiven() {
 
         // given
         givenUserIsLoggedInAndForwarding();
@@ -259,9 +260,7 @@ class ListenCommandTest {
 
         // then
         assertThat(testConsole.output())
-                .contains(PRETTY_JSON)
-                .doesNotContain("-> job.completed")
-                .doesNotContain("[200]");
+                .containsPattern("(?s)-> job\\.completed \\[evt_1].*" + Pattern.quote(PRETTY_JSON) + ".*<- \\[200]");
     }
 
     @Test

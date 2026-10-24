@@ -163,8 +163,8 @@ By default, the CLI listens for all supported webhook events and prints one line
 In terminals that support links (Windows Terminal, iTerm2, VS Code and most others), click the event type to open
 that event in the WhaleDoc app.
 
-To see each event's JSON instead, add `--print-json`. It prints the body as your endpoint receives it, indented, and
-works well with tools such as `jq`:
+To also see each event's JSON, add `--print-json`. It prints the body as your endpoint receives it, indented, under
+the event's line:
 
 ```sh
 whaledoc listen --print-json
