@@ -46,7 +46,7 @@ public record ApplicationContext(
                 Console.system(),
                 ConfigManager.forCurrentUser(objectMapper),
                 new AuthClient(apiClient, sseClient, objectMapper),
-                new WebhookClient(apiClient, sseClient, httpClient),
+                new WebhookClient(apiClient, sseClient, httpClient, objectMapper),
                 new WorkspaceClient(apiClient),
                 UpdateService.create(httpClient, config.releasesUrl())
         );

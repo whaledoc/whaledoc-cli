@@ -5,11 +5,12 @@ import io.whaledoc.config.WhaleDocConfig;
 import io.whaledoc.console.Console;
 import io.whaledoc.console.Spinner;
 import io.whaledoc.exceptions.ApiException;
-import io.whaledoc.exceptions.ForwardException;
 import io.whaledoc.http.Reconnect;
 import io.whaledoc.http.SseConnection;
 import io.whaledoc.http.SseEvent;
 import io.whaledoc.http.SseListener;
+import io.whaledoc.webhook.ForwardResult;
+import io.whaledoc.webhook.SignedEvent;
 import io.whaledoc.webhook.WebhookClient;
 import io.whaledoc.webhook.WebhookEvents;
 import lombok.extern.slf4j.Slf4j;
@@ -22,10 +23,13 @@ import picocli.CommandLine.Spec;
 import java.net.URI;
 import java.time.Clock;
 import java.util.Arrays;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 @Command(
         name = "listen",
@@ -54,6 +58,9 @@ import java.util.concurrent.ExecutionException;
 @Slf4j
 public class ListenCommand implements Callable<Integer> {
 
+    private static final String SIGNING_SECRET = "signingSecret";
+    private static final String DISCONNECTED_BY = "by";
+
     private final ConfigManager configManager;
     private final WebhookClient webhookClient;
     private final Console console;
@@ -80,6 +87,11 @@ public class ListenCommand implements Callable<Integer> {
 
     private URI forwardTarget;
     private boolean listening;
+    private volatile SseConnection connection;
+    private volatile String signingSecret;
+    private String accessToken;
+    /** Virtual threads: a report still on its way never keeps the CLI from exiting. */
+    private final ExecutorService reports = Executors.newVirtualThreadPerTaskExecutor();
 
     public ListenCommand(ConfigManager configManager, WebhookClient webhookClient, Console console) {
         this.configManager = configManager;
@@ -100,8 +112,10 @@ public class ListenCommand implements Callable<Integer> {
 
         Set<String> eventFilter = resolveEvents();
         forwardTarget = resolveForwardTarget();
+        accessToken = config.accessToken();
 
-        SseConnection connection = webhookClient.listen(config.accessToken(), eventFilter, new ListenListener());
+        connection = webhookClient.listen(accessToken, Optional.ofNullable(forwardTarget), eventFilter,
+                new ListenListener());
         Runtime.getRuntime().addShutdownHook(new Thread(connection::close));
 
         try {
@@ -221,18 +235,70 @@ public class ListenCommand implements Callable<Integer> {
 
     private void handleEvent(SseEvent event) {
 
+        switch (event.event()) {
+            case WebhookEvents.READY -> showSigningSecret(event);
+            case WebhookEvents.DISCONNECTED -> stopAsDisconnected(event);
+            case null, default -> handleWebhookEvent(event);
+        }
+    }
+
+    /** Shown when the stream opens, and again after a reconnect only when a teammate rotated it in the app. */
+    private void showSigningSecret(SseEvent event) {
+
+        webhookClient.field(event, SIGNING_SECRET).ifPresent(secret -> {
+            String previous = signingSecret;
+            signingSecret = secret;
+
+            if (previous == null) {
+                console.println("Your webhook signing secret is " + console.bold(secret) + " "
+                        + console.dim("(your local app checks each event with it)"));
+            } else if (!previous.equals(secret)) {
+                console.warning("The webhook signing secret changed. Your local app needs the new one: " + secret);
+            }
+        });
+    }
+
+    /** A teammate disconnected this listener from the WhaleDoc app: stop instead of reconnecting. */
+    private void stopAsDisconnected(SseEvent event) {
+
+        String who = webhookClient.field(event, DISCONNECTED_BY)
+                .map(name -> name + " disconnected this listener")
+                .orElse("This listener was disconnected");
+        console.warning(who + " from the WhaleDoc app. Run " + console.bold("whaledoc listen") + " to start again.");
+        connection.close();
+    }
+
+    private void handleWebhookEvent(SseEvent message) {
+
+        SignedEvent event;
+
+        try {
+            event = webhookClient.parse(message);
+        } catch (ApiException e) {
+            log.warn("Unreadable webhook event {}", message.id(), e);
+            console.warning(e.getMessage());
+            return;
+        }
+
         if (forwardTarget == null) {
             eventPrinter.printEvent(event);
             return;
         }
 
         // A failing local endpoint is reported per event; listening continues for the next one
-        try {
-            eventPrinter.printForwarded(event, webhookClient.forward(forwardTarget, event));
+        ForwardResult result = webhookClient.forward(forwardTarget, event);
+        eventPrinter.printForwarded(event, result);
+        reports.execute(() -> report(event, result));
+    }
 
-        } catch (ForwardException e) {
-            log.warn("Forwarding {} failed", event.event(), e);
-            eventPrinter.printForwardFailed(event, e.getMessage());
+    /** In the background, and never shown: a report that fails doesn't stop listening. */
+    private void report(SignedEvent event, ForwardResult result) {
+
+        try {
+            webhookClient.reportAnswer(accessToken, forwardTarget, event, result);
+        } catch (RuntimeException e) {
+            // Broad on purpose: the report is only for the app's Events tab, and listening goes on
+            log.debug("Reporting the answer to {} failed", event.id(), e);
         }
     }
 }

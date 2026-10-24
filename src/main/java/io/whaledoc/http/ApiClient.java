@@ -44,6 +44,20 @@ public final class ApiClient {
         send(authorizedRequest(path, accessToken).POST(HttpRequest.BodyPublishers.noBody()).build());
     }
 
+    /** A JSON request whose answer has no body to read, such as 204 No Content. */
+    public void postAuthorizedWithoutAnswer(String path, String accessToken, Object requestBody) {
+
+        try {
+            send(authorizedRequest(path, accessToken)
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(requestBody)))
+                    .build());
+
+        } catch (IOException e) {
+            throw new ApiException("Unable to send the request.", e);
+        }
+    }
+
     public <T> T getAuthorized(String path, String accessToken, Class<T> responseType) {
 
         return read(send(authorizedRequest(path, accessToken).GET().build()), responseType);
