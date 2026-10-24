@@ -5,60 +5,74 @@ import io.whaledoc.webhook.ForwardResult;
 import io.whaledoc.webhook.SignedEvent;
 import lombok.RequiredArgsConstructor;
 
+import java.net.URI;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
 /**
- * Prints one line per webhook event, so a stream of events is easy to scan:
- * a dim timestamp, the event type colored by outcome, and the local endpoint's response when forwarding.
+ * Prints a line per webhook event: a dim timestamp, the event type, which opens the
+ * event in the WhaleDoc app when clicked, and its id. When forwarding, a second line gives the local endpoint's
+ * answer.
  */
 @RequiredArgsConstructor
 final class EventPrinter {
 
     private static final DateTimeFormatter TIMESTAMP_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-    private static final int EVENT_COLUMN_WIDTH = 20;
+    /** The event on the app's Webhooks page, in its Events tab. */
+    private static final String EVENT_PATH = "/settings/webhooks?tab=events&event=";
+    private static final String POST = "POST";
 
     private final Console console;
     private final Clock clock;
+    private final String appUrl;
 
+    /** {@code 2026-10-24 22:56:02  -> template.published [evt_…]} */
     void printEvent(SignedEvent event) {
-        console.println(eventLine(event));
-        console.println(event.body());
-        console.println();
+
+        String type = console.link(colorByOutcome(event.type()), eventUrl(event));
+        console.println("%s  %s %s %s".formatted(timestamp(), console.arrow(), type, console.dim(idLabel(event))));
     }
 
-    void printForwarded(SignedEvent event, ForwardResult result) {
+    /** {@code 2026-10-24 22:56:02  <- [200] POST http://localhost:3000/webhooks [evt_…]}, or why it got no answer. */
+    void printForwarded(URI target, SignedEvent event, ForwardResult result) {
 
         String outcome = switch (result) {
-            case ForwardResult.Answered answered -> statusLabel(answered.status());
+            case ForwardResult.Answered answered -> "%s %s %s".formatted(statusLabel(answered.status()), POST, target);
             case ForwardResult.Unanswered unanswered -> console.red("failed") + " " + console.dim(unanswered.reason());
         };
 
-        console.println(eventLine(event) + " " + outcome);
+        console.println("%s  %s %s %s".formatted(timestamp(), console.backArrow(), outcome, console.dim(idLabel(event))));
     }
 
-    private String eventLine(SignedEvent event) {
+    private String timestamp() {
 
-        String timestamp = LocalDateTime.now(clock).format(TIMESTAMP_FORMAT);
-        String type = "%-" + EVENT_COLUMN_WIDTH + "s";
-
-        return "%s  %s %s".formatted(console.dim(timestamp), console.arrow(), colorByOutcome(type.formatted(event.type())));
+        return console.dim(LocalDateTime.now(clock).format(TIMESTAMP_FORMAT));
     }
 
-    private String colorByOutcome(String eventType) {
+    private String eventUrl(SignedEvent event) {
 
-        String type = eventType.strip();
+        return appUrl + EVENT_PATH + URLEncoder.encode(String.valueOf(event.id()), StandardCharsets.UTF_8);
+    }
+
+    private static String idLabel(SignedEvent event) {
+
+        return "[" + event.id() + "]";
+    }
+
+    private String colorByOutcome(String type) {
 
         if (type.endsWith(".failed")) {
-            return console.red(eventType);
+            return console.red(type);
         }
 
         if (type.endsWith(".completed")) {
-            return console.green(eventType);
+            return console.green(type);
         }
 
-        return console.cyan(eventType);
+        return console.cyan(type);
     }
 
     private String statusLabel(int status) {

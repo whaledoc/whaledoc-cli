@@ -26,6 +26,8 @@
         <maven.compiler.target>25</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <whaledoc.api.url>https://api.whaledoc.io</whaledoc.api.url>
+        <!-- The WhaleDoc app, where `whaledoc listen` links each event -->
+        <whaledoc.app.url>https://app.whaledoc.io</whaledoc.app.url>
         <!-- Where `whaledoc update` downloads releases from: {url}/latest/download/version.txt and {url}/download/v{version}/{file} -->
         <whaledoc.releases.url>https://github.com/whaledoc/whaledoc-cli/releases</whaledoc.releases.url>
         <picocli.version>4.7.7</picocli.version>
@@ -219,6 +221,15 @@
     </build>
 
     <profiles>
+        <!-- Points the CLI at a WhaleDoc API and app running locally: ./mvnw clean package -Plocal -->
+        <profile>
+            <id>local</id>
+            <properties>
+                <whaledoc.api.url>http://localhost:8080</whaledoc.api.url>
+                <whaledoc.app.url>http://localhost:3000</whaledoc.app.url>
+            </properties>
+        </profile>
+
         <!-- Builds a native executable with GraalVM: ./mvnw -Pnative package -->
         <profile>
             <id>native</id>

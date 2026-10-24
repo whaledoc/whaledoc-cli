@@ -26,6 +26,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.regex.Pattern;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
@@ -35,6 +36,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.BDDMockito.willThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.timeout;
 
 @ExtendWith(MockitoExtension.class)
@@ -42,6 +44,8 @@ class ListenCommandTest {
 
     private static final String ACCESS_TOKEN = "access-token";
     private static final String FORWARD_URL = "http://localhost:8080/events";
+    private static final String APP_URL = "https://app.example.com";
+    private static final String PRETTY_JSON = "{\n  \"id\" : \"evt_1\"\n}";
     private static final String SECRET = "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw";
     private static final SseEvent MESSAGE = new SseEvent("job.completed", "{\"headers\":{},\"body\":\"{}\"}", "evt_1");
     private static final SignedEvent EVENT = new SignedEvent("evt_1", "job.completed",
@@ -68,7 +72,7 @@ class ListenCommandTest {
     @BeforeEach
     void setUp() {
 
-        commandLine = new CommandLine(new ListenCommand(configManager, webhookClient, testConsole.console()));
+        commandLine = new CommandLine(new ListenCommand(configManager, webhookClient, testConsole.console(), APP_URL));
     }
 
     @Test
@@ -219,7 +223,44 @@ class ListenCommandTest {
         listener.onEvent(MESSAGE);
 
         // then
-        assertThat(testConsole.output()).containsPattern("-> job\\.completed +\\[200]");
+        assertThat(testConsole.output())
+                .containsPattern("-> job\\.completed \\[evt_1]")
+                .containsPattern("<- \\[200] POST http://localhost:8080/events \\[evt_1]");
+    }
+
+    @Test
+    void shouldPrintOneLinePerEventWhenNotForwarding() {
+
+        // given
+        SseListener listener = givenListeningWithoutForwarding();
+        given(webhookClient.parse(MESSAGE)).willReturn(EVENT);
+
+        // when
+        listener.onEvent(MESSAGE);
+
+        // then
+        assertThat(testConsole.output()).containsPattern("\\d{2}:\\d{2}:\\d{2}  -> job\\.completed \\[evt_1]");
+        then(webhookClient).should(never()).forward(any(), any());
+    }
+
+    @Test
+    void shouldPrintPrettyJsonUnderEventLineWhenPrintJsonIsGiven() {
+
+        // given
+        givenUserIsLoggedInAndForwarding();
+        commandLine.execute("--forward-to", FORWARD_URL, "--print-json");
+        then(webhookClient).should().listen(eq(ACCESS_TOKEN), any(URI.class), anySet(), listenerCaptor.capture());
+        given(webhookClient.parse(MESSAGE)).willReturn(EVENT);
+        given(webhookClient.prettyJson(EVENT.body())).willReturn(PRETTY_JSON);
+        given(webhookClient.forward(URI.create(FORWARD_URL), EVENT))
+                .willReturn(Optional.of(new ForwardResult.Answered(200, "ok", 12)));
+
+        // when
+        listenerCaptor.getValue().onEvent(MESSAGE);
+
+        // then
+        assertThat(testConsole.output())
+                .containsPattern("(?s)-> job\\.completed \\[evt_1].*" + Pattern.quote(PRETTY_JSON) + ".*<- \\[200]");
     }
 
     @Test
@@ -299,6 +340,15 @@ class ListenCommandTest {
         // then
         assertThat(exitCode).isEqualTo(2);
         then(webhookClient).shouldHaveNoInteractions();
+    }
+
+    private SseListener givenListeningWithoutForwarding() {
+
+        givenUserIsLoggedInAndListening();
+        commandLine.execute();
+        then(webhookClient).should().listen(eq(ACCESS_TOKEN), anySet(), listenerCaptor.capture());
+
+        return listenerCaptor.getValue();
     }
 
     // Runs the command and returns the handler it registered for incoming events

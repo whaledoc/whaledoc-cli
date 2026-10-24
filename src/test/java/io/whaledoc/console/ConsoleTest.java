@@ -63,6 +63,32 @@ class ConsoleTest {
     }
 
     @Test
+    void shouldWrapTextInTerminalLinkWhenColorsAreEnabled() {
+
+        // given
+        Console console = TestConsole.withCapabilities(TRUE_COLOR_TERMINAL).console();
+
+        // when
+        String actual = console.link("job.completed", "https://app.whaledoc.io/e");
+
+        // then
+        assertThat(actual).isEqualTo("\u001B]8;;https://app.whaledoc.io/e\u001B\\job.completed\u001B]8;;\u001B\\");
+    }
+
+    @Test
+    void shouldPrintPlainTextForLinkWhenColorsAreDisabled() {
+
+        // given
+        Console console = TestConsole.plain().console();
+
+        // when
+        String actual = console.link("job.completed", "https://app.whaledoc.io/e");
+
+        // then
+        assertThat(actual).isEqualTo("job.completed");
+    }
+
+    @Test
     void shouldUseClosestPaletteColorWhenTerminalSupportsOnlyBasicColors() {
 
         // given

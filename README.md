@@ -154,7 +154,21 @@ Listen for WhaleDoc webhook events in real time.
 whaledoc listen
 ```
 
-By default, the CLI listens for all supported webhook events.
+By default, the CLI listens for all supported webhook events and prints one line per event, with its type and id:
+
+```text
+2026-10-24 22:56:02  -> template.published [evt_01M5QTN0KCERNSX6CAAW57NVS5]
+```
+
+In terminals that support links (Windows Terminal, iTerm2, VS Code and most others), click the event type to open
+that event in the WhaleDoc app.
+
+To also see each event's JSON, add `--print-json`. It prints the body as your endpoint receives it, indented, under
+the event's line:
+
+```sh
+whaledoc listen --print-json
+```
 
 ### Filtering events
 
@@ -180,7 +194,13 @@ Forward webhook events to a local HTTP endpoint:
 whaledoc listen --forward-to http://localhost:8080/events
 ```
 
-`http://` is assumed when you leave it out, as in `--forward-to localhost:8080/events`.
+`http://` is assumed when you leave it out, as in `--forward-to localhost:8080/events`. Each event gets a second line
+with your app's answer:
+
+```text
+2026-10-24 22:56:02  -> template.published [evt_01M5QTN0KCERNSX6CAAW57NVS5]
+2026-10-24 22:56:02  <- [200] POST http://localhost:8080/events [evt_01M5QTN0KCERNSX6CAAW57NVS5]
+```
 
 The CLI continues listening for events and forwards each matching event to the specified endpoint. These are your
 workspace's real events, and test events you send with `whaledoc trigger`. Your workspace's webhook endpoints still
@@ -459,11 +479,14 @@ Run the complete test suite:
 
 ### Local API
 
-When developing against a local WhaleDoc API instance, build the CLI with the local API URL:
+When developing against a local WhaleDoc instance, build the CLI with the `local` profile. It points the CLI at the API on `http://localhost:8080`, and the event links of `whaledoc listen` at the app on `http://localhost:3000`:
 
 ```sh
-./mvnw clean package -Dwhaledoc.api.url=http://localhost:8080
+./mvnw clean package -Plocal -DskipTests
 ```
+
+Leave out `-DskipTests` to run the tests as well. Stop a running `whaledoc listen` before you build: the build replaces
+the jar it runs from. Other addresses can be set one by one, for example `-Dwhaledoc.api.url=http://localhost:9090 -Dwhaledoc.app.url=http://localhost:5173`.
 
 ### Native executable
 

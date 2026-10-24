@@ -111,6 +111,16 @@ public final class WebhookClient {
         return new SignedEvent(event.id(), event.event(), Collections.unmodifiableMap(headers), body.asText());
     }
 
+    /** The event's body, indented, as {@code --print-json} shows it; as received when it isn't JSON. */
+    public String prettyJson(String body) {
+
+        try {
+            return objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(objectMapper.readTree(body));
+        } catch (JsonProcessingException e) {
+            return body;
+        }
+    }
+
     /** A field of a stream message about the stream itself, such as the signing secret of {@code ready}. */
     public Optional<String> field(SseEvent event, String name) {
 
