@@ -9,14 +9,12 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
 /**
- * Parses a {@code text/event-stream} into events and remembers the ID of the last one,
- * so a reconnect can ask the server to continue from there.
+ * Parses a {@code text/event-stream} into events.
  */
 final class SseEventReader {
 
     private final Consumer<SseEvent> eventConsumer;
 
-    private String lastEventId;
     private String event;
     private String id;
     private final StringBuilder data = new StringBuilder();
@@ -37,10 +35,6 @@ final class SseEventReader {
                 readLine(line);
             }
         }
-    }
-
-    String lastEventId() {
-        return lastEventId;
     }
 
     private void readLine(String line) {
@@ -72,11 +66,6 @@ final class SseEventReader {
     private void dispatchEvent() {
 
         if (!data.isEmpty()) {
-
-            if (id != null) {
-                lastEventId = id;
-            }
-
             eventConsumer.accept(new SseEvent(event, data.toString(), id));
         }
 
