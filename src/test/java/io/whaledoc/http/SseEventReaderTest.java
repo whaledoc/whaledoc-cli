@@ -53,28 +53,6 @@ class SseEventReaderTest {
         assertThat(receivedEvents).isEmpty();
     }
 
-    @Test
-    void shouldRememberLastEventIdWhenEventsHaveIds() throws IOException {
-
-        // given
-        InputStream stream = createStream("""
-                id: 41
-                data: {}
-
-                id: 42
-                data: {}
-
-                data: event without id
-
-                """);
-
-        // when
-        reader.read(stream, () -> true);
-
-        // then
-        assertThat(reader.lastEventId()).isEqualTo("42");
-    }
-
     private InputStream createStream(String content) {
         return new ByteArrayInputStream(content.getBytes(StandardCharsets.UTF_8));
     }

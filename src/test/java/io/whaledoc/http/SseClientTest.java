@@ -14,10 +14,10 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
-import static com.github.tomakehurst.wiremock.client.WireMock.absent;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
+import static com.github.tomakehurst.wiremock.client.WireMock.matching;
 import static com.github.tomakehurst.wiremock.client.WireMock.serviceUnavailable;
 import static com.github.tomakehurst.wiremock.client.WireMock.stubFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.unauthorized;
@@ -153,20 +153,19 @@ class SseClientTest {
     }
 
     @Test
-    void shouldResumeFromLastEventIdWhenReconnecting(WireMockRuntimeInfo wireMock) throws Exception {
+    void shouldReconnectWithoutLastEventIdWhenStreamDrops(WireMockRuntimeInfo wireMock) {
 
         // given
-        givenServerStreamsFromLastEventId();
+        givenServerEndsStreamAfterOneEvent();
+        CompletableFuture<Void> reconnected = new CompletableFuture<>();
 
         // when
-        connection = sseClient.connect(URI.create(wireMock.getHttpBaseUrl() + "/events"), event -> {
-            if (event.id().equals("43")) {
-                receivedEvent.complete(event);
-            }
-        });
+        connection = sseClient.connect(URI.create(wireMock.getHttpBaseUrl() + "/events"),
+                createListener(new CompletableFuture<>(), reconnected));
 
         // then
-        assertThat(receivedEvent.get(5, TimeUnit.SECONDS).data()).isEqualTo("after reconnect");
+        assertThat(reconnected).succeedsWithin(TIMEOUT);
+        verify(0, getRequestedFor(urlEqualTo("/events")).withHeader("Last-Event-ID", matching(".*")));
     }
 
     @Test
@@ -191,7 +190,7 @@ class SseClientTest {
     void shouldReportReconnectingAndReconnectedWhenStreamDrops(WireMockRuntimeInfo wireMock) {
 
         // given
-        givenServerStreamsFromLastEventId();
+        givenServerEndsStreamAfterOneEvent();
         CompletableFuture<Reconnect> reconnecting = new CompletableFuture<>();
         CompletableFuture<Void> reconnected = new CompletableFuture<>();
         Reconnect expectedReconnect = new Reconnect(1, 10, Duration.ofSeconds(1), null);
@@ -224,20 +223,13 @@ class SseClientTest {
         };
     }
 
-    // The first connection ends after event 42; the reconnect must ask to continue after it
-    private void givenServerStreamsFromLastEventId() {
+    // Every connection ends after one event, so the client reconnects
+    private void givenServerEndsStreamAfterOneEvent() {
 
         stubFor(get(urlEqualTo("/events"))
-                .withHeader("Last-Event-ID", absent())
                 .willReturn(aResponse()
                         .withHeader("Content-Type", "text/event-stream")
-                        .withBody("id: 42\ndata: before reconnect\n\n")));
-
-        stubFor(get(urlEqualTo("/events"))
-                .withHeader("Last-Event-ID", equalTo("42"))
-                .willReturn(aResponse()
-                        .withHeader("Content-Type", "text/event-stream")
-                        .withBody("id: 43\ndata: after reconnect\n\n")));
+                        .withBody("id: 42\ndata: {}\n\n")));
     }
 
     private void givenServerStreams(String path, String body) {

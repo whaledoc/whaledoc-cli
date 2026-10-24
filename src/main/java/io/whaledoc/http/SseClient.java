@@ -47,7 +47,7 @@ public final class SseClient {
         Objects.requireNonNull(uri, "uri must not be null");
         Objects.requireNonNull(listener, "listener must not be null");
 
-        HttpRequest.Builder request = newRequest(uri, accessToken);
+        HttpRequest request = newRequest(uri, accessToken);
         SseConnection connection = new SseConnection();
 
         Thread readerThread = threadFactory.newThread(() -> run(request, connection, listener));
@@ -57,7 +57,7 @@ public final class SseClient {
         return connection;
     }
 
-    private void run(HttpRequest.Builder request, SseConnection connection, SseListener listener) {
+    private void run(HttpRequest request, SseConnection connection, SseListener listener) {
 
         try {
             readUntilClosed(request, connection, listener);
@@ -70,7 +70,7 @@ public final class SseClient {
         }
     }
 
-    private void readUntilClosed(HttpRequest.Builder request, SseConnection connection, SseListener listener) {
+    private void readUntilClosed(HttpRequest request, SseConnection connection, SseListener listener) {
 
         SseEventReader reader = new SseEventReader(event -> dispatch(event, listener));
         Backoff backoff = new Backoff();
@@ -80,8 +80,7 @@ public final class SseClient {
             ApiException dropReason;
 
             try {
-                HttpRequest attempt = resumeFrom(request, reader.lastEventId());
-                HttpResponse<InputStream> response = httpClient.send(attempt, HttpResponse.BodyHandlers.ofInputStream());
+                HttpResponse<InputStream> response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
 
                 validateResponse(response);
                 connection.setInputStream(response.body());
@@ -108,8 +107,7 @@ public final class SseClient {
                     return;
                 }
 
-                URI uri = request.copy().build().uri();
-                dropReason = new ApiException(NetworkErrors.describe(uri, e), e);
+                dropReason = new ApiException(NetworkErrors.describe(request.uri(), e), e);
             }
 
             if (!connection.isOpen() || !waitBeforeRetry(backoff, dropReason, listener)) {
@@ -186,7 +184,7 @@ public final class SseClient {
         }
     }
 
-    private static HttpRequest.Builder newRequest(URI uri, String accessToken) {
+    private static HttpRequest newRequest(URI uri, String accessToken) {
 
         HttpRequest.Builder request = HttpRequest.newBuilder(uri)
                 .header("Accept", SSE_MEDIA_TYPE)
@@ -197,19 +195,7 @@ public final class SseClient {
             request.header("Authorization", "Bearer " + accessToken);
         }
 
-        return request;
-    }
-
-    // Asks the server to continue after the last received event, so none are missed while reconnecting
-    private static HttpRequest resumeFrom(HttpRequest.Builder request, String lastEventId) {
-
-        HttpRequest.Builder copy = request.copy();
-
-        if (lastEventId != null) {
-            copy.header("Last-Event-ID", lastEventId);
-        }
-
-        return copy.GET().build();
+        return request.GET().build();
     }
 
     private static void validateResponse(HttpResponse<InputStream> response) throws IOException {
