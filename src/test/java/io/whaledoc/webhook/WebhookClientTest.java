@@ -188,6 +188,19 @@ class WebhookClientTest {
     }
 
     @Test
+    void shouldIndentBodyWhenPrettyPrintingJson() {
+
+        // given
+        String body = "{\"id\":\"evt_1\",\"data\":{\"n\":1}}";
+
+        // when
+        String pretty = webhookClient.prettyJson(body);
+
+        // then
+        assertThat(pretty.lines()).hasSizeGreaterThan(3).anyMatch(line -> line.startsWith("  \"id\""));
+    }
+
+    @Test
     void shouldThrowApiExceptionWhenStreamMessageHasNoBody() {
 
         // given

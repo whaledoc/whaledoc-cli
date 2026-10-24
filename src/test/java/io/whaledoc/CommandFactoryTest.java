@@ -67,7 +67,7 @@ class CommandFactoryTest {
     private CommandLine createCommandLine(StringWriter output) {
 
         ApplicationContext context = new ApplicationContext(
-                new ApplicationConfig("https://api.example.com", "https://releases.example.com", "1.2.3"),
+                new ApplicationConfig("https://api.example.com", "https://app.example.com", "https://releases.example.com", "1.2.3"),
                 TestConsole.plain().console(),
                 configManager,
                 authClient,

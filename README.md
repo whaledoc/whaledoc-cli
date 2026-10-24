@@ -154,7 +154,21 @@ Listen for WhaleDoc webhook events in real time.
 whaledoc listen
 ```
 
-By default, the CLI listens for all supported webhook events.
+By default, the CLI listens for all supported webhook events and prints one line per event, with its type and id:
+
+```text
+2026-10-24 22:56:02  -> template.published [evt_01M5QTN0KCERNSX6CAAW57NVS5]
+```
+
+In terminals that support links (Windows Terminal, iTerm2, VS Code and most others), click the event type to open
+that event in the WhaleDoc app.
+
+To see each event's JSON instead, add `--print-json`. It prints the body as your endpoint receives it, indented, and
+works well with tools such as `jq`:
+
+```sh
+whaledoc listen --print-json
+```
 
 ### Filtering events
 
@@ -180,7 +194,13 @@ Forward webhook events to a local HTTP endpoint:
 whaledoc listen --forward-to http://localhost:8080/events
 ```
 
-`http://` is assumed when you leave it out, as in `--forward-to localhost:8080/events`.
+`http://` is assumed when you leave it out, as in `--forward-to localhost:8080/events`. Each event gets a second line
+with your app's answer:
+
+```text
+2026-10-24 22:56:02  -> template.published [evt_01M5QTN0KCERNSX6CAAW57NVS5]
+2026-10-24 22:56:02  <- [200] POST http://localhost:8080/events [evt_01M5QTN0KCERNSX6CAAW57NVS5]
+```
 
 The CLI continues listening for events and forwards each matching event to the specified endpoint. These are your
 workspace's real events, and test events you send with `whaledoc trigger`. Your workspace's webhook endpoints still

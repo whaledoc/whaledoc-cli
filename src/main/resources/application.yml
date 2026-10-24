@@ -4,5 +4,8 @@ whaledoc:
   api:
     url: ${whaledoc.api.url}
 
+  app:
+    url: ${whaledoc.app.url}
+
   releases:
     url: ${whaledoc.releases.url}

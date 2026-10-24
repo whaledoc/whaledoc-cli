@@ -86,6 +86,12 @@ public class ListenCommand implements Callable<Integer> {
     )
     private String forwardTo;
 
+    @Option(
+            names = {"--print-json"},
+            description = "Print each event's JSON instead of a line per event."
+    )
+    private boolean printJson;
+
     @Spec
     private CommandSpec spec;
 
@@ -100,11 +106,12 @@ public class ListenCommand implements Callable<Integer> {
     /** Virtual threads: a report still on its way never keeps the CLI from exiting. */
     private final ExecutorService reports = Executors.newVirtualThreadPerTaskExecutor();
 
-    public ListenCommand(ConfigManager configManager, WebhookClient webhookClient, Console console) {
+    /** {@code appUrl}: the WhaleDoc app, where each printed event links to. */
+    public ListenCommand(ConfigManager configManager, WebhookClient webhookClient, Console console, String appUrl) {
         this.configManager = configManager;
         this.webhookClient = webhookClient;
         this.console = console;
-        this.eventPrinter = new EventPrinter(console, Clock.systemDefaultZone());
+        this.eventPrinter = new EventPrinter(console, Clock.systemDefaultZone(), appUrl);
     }
 
     @Override
@@ -314,15 +321,23 @@ public class ListenCommand implements Callable<Integer> {
             return;
         }
 
-        if (forwardTarget == null) {
+        if (printJson) {
+            console.println(webhookClient.prettyJson(event.body()));
+        } else {
             eventPrinter.printEvent(event);
+        }
+
+        if (forwardTarget == null) {
             return;
         }
 
         // A failing local endpoint is reported per event; listening continues for the next one. Nothing is shown or
-        // reported for a forward cut short by quitting
+        // reported for a forward cut short by quitting, and only JSON is printed with --print-json
         webhookClient.forward(forwardTarget, event).ifPresent(result -> {
-            eventPrinter.printForwarded(event, result);
+            if (!printJson) {
+                eventPrinter.printForwarded(forwardTarget, event, result);
+            }
+
             reports.execute(() -> report(event, result));
         });
     }
