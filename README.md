@@ -184,6 +184,27 @@ The CLI continues listening for events and forwards each matching event to the s
 workspace's real events, and test events you send with `whaledoc trigger`. Your workspace's webhook endpoints still
 receive the real events as usual.
 
+Each forwarded event is the request a real webhook delivery sends: the same JSON body and the
+[Standard Webhooks](https://www.standardwebhooks.com/) headers `webhook-id`, `webhook-timestamp` and
+`webhook-signature`, plus `WhaleDoc-Event` with the event type. Your endpoint verifies it with the same library and
+code as in production.
+
+The CLI signs forwarded events with its own signing secret, made the first time you forward and kept on this
+computer. It shows the secret when listening starts:
+
+```text
+Ready! Listening for webhook events (^C to quit)
+Forwarding to http://localhost:8080/events
+Your webhook signing secret is whsec_...
+```
+
+Use it as your endpoint's secret during development. To sign with the secret of one of your workspace's webhook
+endpoints instead, pass it with `--secret`:
+
+```sh
+whaledoc listen --forward-to localhost:8080/events --secret whsec_...
+```
+
 You can combine event filtering and forwarding:
 
 ```sh
@@ -204,8 +225,8 @@ whaledoc listen --forward-to localhost:8080/events
 whaledoc trigger job.completed
 ```
 
-The event reaches `listen` like any other event, marked as a test, so you can try your integration without running a
-real job. Test events are only for local development: they never go to your workspace's webhook endpoints or to
+The event reaches `listen` like any other event, with sample data (a job named "Sample job", a template named
+"Sample template"). You can try your integration without running a real job. Test events are only for local development: they never go to your workspace's webhook endpoints or to
 anyone else's `listen`. Any event from [Webhook Events](#webhook-events) works.
 
 ### `workspace`

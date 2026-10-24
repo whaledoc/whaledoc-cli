@@ -32,6 +32,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.BDDMockito.willThrow;
+import static org.mockito.Mockito.never;
 
 @ExtendWith(MockitoExtension.class)
 class ListenCommandTest {
@@ -39,6 +40,8 @@ class ListenCommandTest {
     private static final String ACCESS_TOKEN = "access-token";
     private static final String FORWARD_URL = "http://localhost:8080/events";
     private static final SseEvent EVENT = new SseEvent("job.completed", "{\"id\":\"job-1\"}", "1");
+    private static final String OWN_SECRET = "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw";
+    private static final String ENDPOINT_SECRET = "whsec_" + "B".repeat(32);
 
     @Mock
     private ConfigManager configManager;
@@ -142,7 +145,77 @@ class ListenCommandTest {
         listener.onEvent(EVENT);
 
         // then
-        then(webhookClient).should().forward(URI.create(FORWARD_URL), EVENT);
+        then(webhookClient).should().forward(URI.create(FORWARD_URL), EVENT, OWN_SECRET);
+    }
+
+    @Test
+    void shouldPrintOwnSigningSecretWhenForwarding() {
+
+        // given
+        givenListeningWithForwardUrl(FORWARD_URL);
+
+        // when
+        String output = testConsole.output();
+
+        // then
+        assertThat(output).contains("Your webhook signing secret is " + OWN_SECRET);
+    }
+
+    @Test
+    void shouldSignWithGivenSecretWhenSecretIsGiven() {
+
+        // given
+        givenUserIsLoggedInAndListening();
+        commandLine.execute("--forward-to", FORWARD_URL, "--secret", ENDPOINT_SECRET);
+        then(webhookClient).should().listen(eq(ACCESS_TOKEN), anySet(), listenerCaptor.capture());
+
+        // when
+        listenerCaptor.getValue().onEvent(EVENT);
+
+        // then
+        then(webhookClient).should().forward(URI.create(FORWARD_URL), EVENT, ENDPOINT_SECRET);
+        then(configManager).should(never()).webhookSecret();
+    }
+
+    @Test
+    void shouldMaskGivenSecretWhenPrintingIt() {
+
+        // given
+        givenUserIsLoggedInAndListening();
+
+        // when
+        commandLine.execute("--forward-to", FORWARD_URL, "--secret", ENDPOINT_SECRET);
+
+        // then
+        assertThat(testConsole.output()).contains("Signing with your secret whsec_…BBBB").doesNotContain(ENDPOINT_SECRET);
+    }
+
+    @Test
+    void shouldRejectCommandWhenSecretIsInvalid() {
+
+        // given
+        given(configManager.load()).willReturn(createConfig(ACCESS_TOKEN));
+
+        // when
+        int exitCode = commandLine.execute("--forward-to", FORWARD_URL, "--secret", "not-a-secret");
+
+        // then
+        assertThat(exitCode).isEqualTo(2);
+        then(webhookClient).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void shouldRejectCommandWhenSecretIsGivenWithoutForwardUrl() {
+
+        // given
+        given(configManager.load()).willReturn(createConfig(ACCESS_TOKEN));
+
+        // when
+        int exitCode = commandLine.execute("--secret", ENDPOINT_SECRET);
+
+        // then
+        assertThat(exitCode).isEqualTo(2);
+        then(webhookClient).shouldHaveNoInteractions();
     }
 
     @Test
@@ -166,7 +239,7 @@ class ListenCommandTest {
 
         // given
         SseListener listener = givenListeningWithForwardUrl(FORWARD_URL);
-        given(webhookClient.forward(URI.create(FORWARD_URL), EVENT)).willReturn(200);
+        given(webhookClient.forward(URI.create(FORWARD_URL), EVENT, OWN_SECRET)).willReturn(200);
 
         // when
         listener.onEvent(EVENT);
@@ -196,7 +269,7 @@ class ListenCommandTest {
 
         // given
         SseListener listener = givenListeningWithForwardUrl(FORWARD_URL);
-        given(webhookClient.forward(any(), any())).willThrow(new ForwardException("Unable to reach " + FORWARD_URL));
+        given(webhookClient.forward(any(), any(), any())).willThrow(new ForwardException("Unable to reach " + FORWARD_URL));
 
         // when
         Throwable thrown = catchThrowable(() -> listener.onEvent(EVENT));
@@ -223,6 +296,7 @@ class ListenCommandTest {
     private SseListener givenListeningWithForwardUrl(String forwardUrl) {
 
         givenUserIsLoggedInAndListening();
+        given(configManager.webhookSecret()).willReturn(OWN_SECRET);
         commandLine.execute("--forward-to", forwardUrl);
         then(webhookClient).should().listen(eq(ACCESS_TOKEN), anySet(), listenerCaptor.capture());
 

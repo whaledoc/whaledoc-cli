@@ -14,6 +14,9 @@ import org.junit.jupiter.api.Test;
 
 import java.net.URI;
 import java.net.http.HttpClient;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -39,6 +42,8 @@ class WebhookClientTest {
 
     private static final SseEvent CREATED_EVENT = new SseEvent("job.completed", "{\"id\":\"job-1\"}", "1");
     private static final SseEvent FAILED_EVENT = new SseEvent("job.failed", "{\"id\":\"job-2\"}", "2");
+    private static final String SECRET = "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw";
+    private static final long TIMESTAMP = 1792072803;
 
     private WebhookClient webhookClient;
     private String baseUrl;
@@ -50,7 +55,8 @@ class WebhookClientTest {
         baseUrl = wireMock.getHttpBaseUrl();
         HttpClient httpClient = HttpClient.newHttpClient();
         ApiClient apiClient = new ApiClient(httpClient, new ObjectMapper(), baseUrl);
-        webhookClient = new WebhookClient(apiClient, new SseClient(httpClient), httpClient);
+        webhookClient = new WebhookClient(apiClient, new SseClient(httpClient), httpClient,
+                Clock.fixed(Instant.ofEpochSecond(TIMESTAMP), ZoneOffset.UTC));
     }
 
     @AfterEach
@@ -62,21 +68,24 @@ class WebhookClientTest {
     }
 
     @Test
-    void shouldPostEventWithEventHeadersWhenForwardingEvent() {
+    void shouldPostSignedEventWithStandardWebhooksHeadersWhenForwardingEvent() {
 
         // given
         stubFor(post(urlEqualTo("/events")).willReturn(ok()));
+        String expectedSignature = WebhookSigner.signature(SECRET, "1", TIMESTAMP, CREATED_EVENT.data());
 
         // when
-        int status = webhookClient.forward(URI.create(baseUrl + "/events"), CREATED_EVENT);
+        int status = webhookClient.forward(URI.create(baseUrl + "/events"), CREATED_EVENT, SECRET);
 
         // then
         assertThat(status).isEqualTo(200);
         verify(postRequestedFor(urlEqualTo("/events"))
                 .withHeader("Content-Type", equalTo("application/json"))
+                .withHeader("webhook-id", equalTo("1"))
+                .withHeader("webhook-timestamp", equalTo(Long.toString(TIMESTAMP)))
+                .withHeader("webhook-signature", equalTo(expectedSignature))
                 .withHeader("WhaleDoc-Event", equalTo("job.completed"))
-                .withHeader("WhaleDoc-Event-Id", equalTo("1"))
-                .withRequestBody(equalToJson(CREATED_EVENT.data())));
+                .withRequestBody(equalTo(CREATED_EVENT.data())));
     }
 
     @Test
@@ -87,7 +96,7 @@ class WebhookClientTest {
         URI target = URI.create(baseUrl + "/events");
 
         // when
-        Throwable thrown = catchThrowable(() -> webhookClient.forward(target, CREATED_EVENT));
+        Throwable thrown = catchThrowable(() -> webhookClient.forward(target, CREATED_EVENT, SECRET));
 
         // then
         assertThat(thrown)
@@ -102,7 +111,7 @@ class WebhookClientTest {
         URI target = URI.create("http://localhost:1/events");
 
         // when
-        Throwable thrown = catchThrowable(() -> webhookClient.forward(target, CREATED_EVENT));
+        Throwable thrown = catchThrowable(() -> webhookClient.forward(target, CREATED_EVENT, SECRET));
 
         // then
         assertThat(thrown)

@@ -12,6 +12,7 @@ import io.whaledoc.http.SseEvent;
 import io.whaledoc.http.SseListener;
 import io.whaledoc.webhook.WebhookClient;
 import io.whaledoc.webhook.WebhookEvents;
+import io.whaledoc.webhook.WebhookSigner;
 import lombok.extern.slf4j.Slf4j;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
@@ -35,13 +36,16 @@ import java.util.concurrent.ExecutionException;
                 "Listen for webhook events.",
                 "%nThe listen command watches and forwards webhook events from WhaleDoc to your",
                 "local machine by connecting directly to the WhaleDoc API. You can filter events",
-                "or forward them to a local HTTP endpoint.",
+                "or forward them to a local HTTP endpoint. Forwarded events are signed like real",
+                "deliveries, with this computer's own secret or the one you pass with --secret.",
                 """
                         
                          @|bold Examples:|@
                             whaledoc listen
                             whaledoc listen --events job.completed,job.failed \\
                             --forward-to localhost:8080/events
+                            whaledoc listen --forward-to localhost:8080/events \\
+                            --secret whsec_...
                         """
         },
         headerHeading = "",
@@ -75,10 +79,19 @@ public class ListenCommand implements Callable<Integer> {
     )
     private String forwardTo;
 
+    @Option(
+            names = {"-s", "--secret"},
+            paramLabel = "string",
+            description = "The secret to sign forwarded events with, e.g. your endpoint's whsec_... "
+                    + "(defaults to this computer's own)."
+    )
+    private String secret;
+
     @Spec
     private CommandSpec spec;
 
     private URI forwardTarget;
+    private String signingSecret;
     private boolean listening;
 
     public ListenCommand(ConfigManager configManager, WebhookClient webhookClient, Console console) {
@@ -100,6 +113,7 @@ public class ListenCommand implements Callable<Integer> {
 
         Set<String> eventFilter = resolveEvents();
         forwardTarget = resolveForwardTarget();
+        signingSecret = resolveSigningSecret();
 
         SseConnection connection = webhookClient.listen(config.accessToken(), eventFilter, new ListenListener());
         Runtime.getRuntime().addShutdownHook(new Thread(connection::close));
@@ -158,6 +172,7 @@ public class ListenCommand implements Callable<Integer> {
 
         if (forwardTarget != null) {
             console.println(console.dim("Forwarding to ") + console.cyan(forwardTarget.toString()));
+            console.println(console.dim(signedWith()) + console.bold(shownSecret()));
         }
 
         console.println();
@@ -219,6 +234,44 @@ public class ListenCommand implements Callable<Integer> {
         }
     }
 
+    /** Your own secret with --secret, else this computer's, made the first time it forwards. */
+    private String resolveSigningSecret() {
+
+        if (forwardTarget == null) {
+            requireNoSecret();
+            return null;
+        }
+
+        if (secret == null) {
+            return configManager.webhookSecret();
+        }
+
+        if (!WebhookSigner.isValidSecret(secret)) {
+            throw new CommandLine.ParameterException(spec.commandLine(),
+                    "Invalid --secret. A signing secret starts with " + WebhookSigner.SECRET_PREFIX + ".");
+        }
+
+        return secret;
+    }
+
+    private void requireNoSecret() {
+
+        if (secret != null) {
+            throw new CommandLine.ParameterException(spec.commandLine(), "--secret only works with --forward-to.");
+        }
+    }
+
+    private String signedWith() {
+
+        return secret == null ? "Your webhook signing secret is " : "Signing with your secret ";
+    }
+
+    /** The CLI's own secret in full, to set up a local endpoint with. One you passed is an endpoint's: masked. */
+    private String shownSecret() {
+
+        return secret == null ? signingSecret : WebhookSigner.masked(signingSecret);
+    }
+
     private void handleEvent(SseEvent event) {
 
         if (forwardTarget == null) {
@@ -228,7 +281,7 @@ public class ListenCommand implements Callable<Integer> {
 
         // A failing local endpoint is reported per event; listening continues for the next one
         try {
-            eventPrinter.printForwarded(event, webhookClient.forward(forwardTarget, event));
+            eventPrinter.printForwarded(event, webhookClient.forward(forwardTarget, event, signingSecret));
 
         } catch (ForwardException e) {
             log.warn("Forwarding {} failed", event.event(), e);

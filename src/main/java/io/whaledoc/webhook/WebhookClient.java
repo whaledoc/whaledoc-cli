@@ -15,23 +15,28 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Clock;
 import java.time.Duration;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 
 public final class WebhookClient {
 
     private static final Duration FORWARD_TIMEOUT = Duration.ofSeconds(10);
+    private static final String JSON = "application/json";
     private static final Set<String> FORWARD_SCHEMES = Set.of("http", "https");
 
     private final ApiClient apiClient;
     private final SseClient sseClient;
     private final HttpClient httpClient;
+    private final Clock clock;
 
-    public WebhookClient(ApiClient apiClient, SseClient sseClient, HttpClient httpClient) {
+    public WebhookClient(ApiClient apiClient, SseClient sseClient, HttpClient httpClient, Clock clock) {
         this.apiClient = apiClient;
         this.sseClient = sseClient;
         this.httpClient = httpClient;
+        this.clock = clock;
     }
 
     /**
@@ -60,17 +65,20 @@ public final class WebhookClient {
     }
 
     /**
-     * Posts the event's data to the target and returns the response status.
+     * Posts the event to the target as a real delivery would: the same body, signed with {@code secret}.
      *
+     * @return the response status
      * @throws ForwardException when the target can't be reached or doesn't respond with a 2xx status
      */
-    public int forward(URI target, SseEvent event) {
+    public int forward(URI target, SseEvent event, String secret) {
 
         Objects.requireNonNull(target);
         Objects.requireNonNull(event);
+        Objects.requireNonNull(secret);
 
         try {
-            HttpResponse<Void> response = httpClient.send(createForwardRequest(target, event), HttpResponse.BodyHandlers.discarding());
+            HttpResponse<Void> response = httpClient.send(createForwardRequest(target, event, secret),
+                    HttpResponse.BodyHandlers.discarding());
 
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 throw new ForwardException("%s responded with HTTP %d".formatted(target, response.statusCode()));
@@ -114,22 +122,22 @@ public final class WebhookClient {
         ));
     }
 
-    // Event type and ID headers let the local endpoint handle events like real webhook deliveries
-    private static HttpRequest createForwardRequest(URI target, SseEvent event) {
+    // The Standard Webhooks headers of a real delivery, so the local endpoint verifies and handles it the same way
+    private HttpRequest createForwardRequest(URI target, SseEvent event, String secret) {
+
+        String webhookId = Optional.ofNullable(event.id()).orElse("");
+        long timestamp = clock.instant().getEpochSecond();
 
         HttpRequest.Builder request = HttpRequest.newBuilder(target)
                 .timeout(FORWARD_TIMEOUT)
-                .header("Content-Type", "application/json")
+                .header(ForwardHeaders.CONTENT_TYPE, JSON)
+                .header(ForwardHeaders.WEBHOOK_ID, webhookId)
+                .header(ForwardHeaders.WEBHOOK_TIMESTAMP, Long.toString(timestamp))
+                .header(ForwardHeaders.WEBHOOK_SIGNATURE,
+                        WebhookSigner.signature(secret, webhookId, timestamp, event.data()))
                 .POST(HttpRequest.BodyPublishers.ofString(event.data()));
 
-        if (event.event() != null) {
-            request.header("WhaleDoc-Event", event.event());
-        }
-
-        if (event.id() != null) {
-            request.header("WhaleDoc-Event-Id", event.id());
-        }
-
+        Optional.ofNullable(event.event()).ifPresent(type -> request.header(ForwardHeaders.EVENT, type));
         return request.build();
     }
 
