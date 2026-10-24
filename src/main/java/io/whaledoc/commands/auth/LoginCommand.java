@@ -103,8 +103,7 @@ public class LoginCommand implements Callable<Integer> {
 
         AuthenticationEvent approved = awaitAuthentication(authentication, spinner);
         configManager.saveToFile(
-                WhaleDocConfig.builder()
-                        .cliId(config.cliId())
+                config.toBuilder()
                         .accessToken(approved.accessToken())
                         .build()
         );

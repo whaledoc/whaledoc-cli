@@ -46,6 +46,19 @@ class ConfigManagerTest {
     }
 
     @Test
+    void shouldKeepWebhookSecretWhenAskedForAgain() {
+
+        // given
+        String expectedSecret = configManager.webhookSecret();
+
+        // when
+        String actualSecret = new ConfigManager(new ObjectMapper(), configDirectory).webhookSecret();
+
+        // then
+        assertThat(actualSecret).isEqualTo(expectedSecret).startsWith("whsec_");
+    }
+
+    @Test
     void shouldKeepCliIdWhenConfigIsLoadedAgain() {
 
         // given

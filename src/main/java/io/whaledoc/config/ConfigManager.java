@@ -3,13 +3,16 @@ package io.whaledoc.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.whaledoc.exceptions.ConfigException;
+import io.whaledoc.webhook.WebhookSigner;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -17,6 +20,8 @@ import java.util.UUID;
 public final class ConfigManager {
 
     private static final String CONFIG_FILE_NAME = "config.json";
+    private static final String TEMP_PREFIX = "config-";
+    private static final String TEMP_SUFFIX = ".json.tmp";
     private static final Set<PosixFilePermission> OWNER_READ_WRITE = PosixFilePermissions.fromString("rw-------");
 
     private final ObjectMapper objectMapper;
@@ -50,6 +55,26 @@ public final class ConfigManager {
         }
     }
 
+    /** The secret forwarded events are signed with, made and saved the first time it is asked for. */
+    public String webhookSecret() {
+
+        WhaleDocConfig config = load();
+
+        return Optional.ofNullable(config.webhookSecret()).orElseGet(this::newWebhookSecret);
+    }
+
+    /** Read again right before saving: another command may have made one meanwhile, and it is kept. */
+    private String newWebhookSecret() {
+
+        WhaleDocConfig latest = load();
+
+        return Optional.ofNullable(latest.webhookSecret()).orElseGet(() -> {
+            String secret = WebhookSigner.newSecret();
+            saveToFile(latest.toBuilder().webhookSecret(secret).build());
+            return secret;
+        });
+    }
+
     private WhaleDocConfig createDefaultConfig() {
 
         log.debug("Creating default config.");
@@ -65,30 +90,36 @@ public final class ConfigManager {
 
         try {
             Files.createDirectories(configDirectory);
-            restrictToOwner();
+            Path written = createPrivateFile();
 
-            objectMapper
-                    .writerWithDefaultPrettyPrinter()
-                    .writeValue(configFile.toFile(), config);
+            try {
+                objectMapper
+                        .writerWithDefaultPrettyPrinter()
+                        .writeValue(written.toFile(), config);
+                Files.move(written, configFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+
+            } finally {
+                Files.deleteIfExists(written);
+            }
 
         } catch (IOException e) {
             throw new ConfigException("Unable to save WhaleDoc configuration.", e);
         }
     }
 
-    // The config holds the access token, so on macOS and Linux only the user may read it.
-    // On Windows, the config directory under %APPDATA% is already private to the user.
-    private void restrictToOwner() throws IOException {
+    /**
+     * The new config is written next to the old one and moved over it in one step, so another command never reads a
+     * half-written file. It holds the access token, so on macOS and Linux only the user may read it; on Windows, the
+     * config directory under %APPDATA% is already private to the user. Replacing the file also tightens configs made
+     * by earlier versions.
+     */
+    private Path createPrivateFile() throws IOException {
 
         if (!configDirectory.getFileSystem().supportedFileAttributeViews().contains("posix")) {
-            return;
+            return Files.createTempFile(configDirectory, TEMP_PREFIX, TEMP_SUFFIX);
         }
 
-        if (Files.notExists(configFile)) {
-            Files.createFile(configFile, PosixFilePermissions.asFileAttribute(OWNER_READ_WRITE));
-        }
-
-        // Also tightens config files created by earlier versions
-        Files.setPosixFilePermissions(configFile, OWNER_READ_WRITE);
+        return Files.createTempFile(configDirectory, TEMP_PREFIX, TEMP_SUFFIX,
+                PosixFilePermissions.asFileAttribute(OWNER_READ_WRITE));
     }
 }

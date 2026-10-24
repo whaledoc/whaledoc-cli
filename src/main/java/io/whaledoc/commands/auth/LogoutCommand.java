@@ -73,6 +73,7 @@ public class LogoutCommand implements Callable<Integer> {
         configManager.saveToFile(
                 WhaleDocConfig.builder()
                         .cliId(config.cliId())
+                        .webhookSecret(config.webhookSecret())
                         .build()
         );
 
