@@ -482,10 +482,11 @@ Run the complete test suite:
 When developing against a local WhaleDoc instance, build the CLI with the `local` profile. It points the CLI at the API on `http://localhost:8080`, and the event links of `whaledoc listen` at the app on `http://localhost:3000`:
 
 ```sh
-./mvnw clean package -Plocal
+./mvnw clean package -Plocal -DskipTests
 ```
 
-Other addresses can be set one by one, for example `-Dwhaledoc.api.url=http://localhost:9090 -Dwhaledoc.app.url=http://localhost:5173`.
+Leave out `-DskipTests` to run the tests as well. Stop a running `whaledoc listen` before you build: the build replaces
+the jar it runs from. Other addresses can be set one by one, for example `-Dwhaledoc.api.url=http://localhost:9090 -Dwhaledoc.app.url=http://localhost:5173`.
 
 ### Native executable
 
