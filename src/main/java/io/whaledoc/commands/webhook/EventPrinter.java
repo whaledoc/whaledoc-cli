@@ -1,7 +1,8 @@
 package io.whaledoc.commands.webhook;
 
 import io.whaledoc.console.Console;
-import io.whaledoc.http.SseEvent;
+import io.whaledoc.webhook.ForwardResult;
+import io.whaledoc.webhook.SignedEvent;
 import lombok.RequiredArgsConstructor;
 
 import java.time.Clock;
@@ -21,26 +22,28 @@ final class EventPrinter {
     private final Console console;
     private final Clock clock;
 
-    void printEvent(SseEvent event) {
+    void printEvent(SignedEvent event) {
         console.println(eventLine(event));
-        console.println(event.data());
+        console.println(event.body());
         console.println();
     }
 
-    void printForwarded(SseEvent event, int status) {
-        console.println(eventLine(event) + " " + statusLabel(status));
+    void printForwarded(SignedEvent event, ForwardResult result) {
+
+        String outcome = switch (result) {
+            case ForwardResult.Answered answered -> statusLabel(answered.status());
+            case ForwardResult.Unanswered unanswered -> console.red("failed") + " " + console.dim(unanswered.reason());
+        };
+
+        console.println(eventLine(event) + " " + outcome);
     }
 
-    void printForwardFailed(SseEvent event, String reason) {
-        console.println(eventLine(event) + " " + console.red("failed") + " " + console.dim(reason));
-    }
-
-    private String eventLine(SseEvent event) {
+    private String eventLine(SignedEvent event) {
 
         String timestamp = LocalDateTime.now(clock).format(TIMESTAMP_FORMAT);
         String type = "%-" + EVENT_COLUMN_WIDTH + "s";
 
-        return "%s  %s %s".formatted(console.dim(timestamp), console.arrow(), colorByOutcome(type.formatted(event.event())));
+        return "%s  %s %s".formatted(console.dim(timestamp), console.arrow(), colorByOutcome(type.formatted(event.type())));
     }
 
     private String colorByOutcome(String eventType) {

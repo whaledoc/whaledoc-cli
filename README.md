@@ -180,9 +180,30 @@ Forward webhook events to a local HTTP endpoint:
 whaledoc listen --forward-to http://localhost:8080/events
 ```
 
+`http://` is assumed when you leave it out, as in `--forward-to localhost:8080/events`.
+
 The CLI continues listening for events and forwards each matching event to the specified endpoint. These are your
 workspace's real events, and test events you send with `whaledoc trigger`. Your workspace's webhook endpoints still
-receive the real events as usual.
+receive the real events as usual. Each event arrives as WhaleDoc delivers it to a webhook endpoint: the same body and
+the same signature headers (`webhook-id`, `webhook-timestamp`, `webhook-signature`). The CLI forwards them unchanged.
+
+### Checking signatures locally
+
+When `listen` starts, it shows your workspace's webhook signing secret for local development:
+
+```text
+Your webhook signing secret is whsec_...
+```
+
+Use it in your local app to check each event's signature, with the same
+[Standard Webhooks](https://www.standardwebhooks.com) library and code you use in production. It is the same for
+everyone in your workspace, and you also find it on the Webhooks page in the WhaleDoc app. If someone rotates it
+there, `listen` reconnects and shows the new one.
+
+Your local app's answers show up in the WhaleDoc app, next to each event, for everyone who manages webhooks in your
+workspace: the status, the time it took, the first 2 KB of the answer and the local URL. Keep secrets out of your
+local app's error pages. They can also send a test event or an event again to your `listen`, or disconnect it.
+When someone disconnects it, `listen` tells you who and stops.
 
 You can combine event filtering and forwarding:
 
@@ -204,9 +225,10 @@ whaledoc listen --forward-to localhost:8080/events
 whaledoc trigger job.completed
 ```
 
-The event reaches `listen` like any other event, marked as a test, so you can try your integration without running a
-real job. Test events are only for local development: they never go to your workspace's webhook endpoints or to
-anyone else's `listen`. Any event from [Webhook Events](#webhook-events) works.
+The event reaches `listen` like any other event, with sample data such as a job named "Sample job". You can try your
+integration without running a real job. It also appears among your workspace's events in the WhaleDoc app. Test events
+are only for local development: they never go to your workspace's webhook endpoints or to anyone else's `listen`. Any
+event from [Webhook Events](#webhook-events) works.
 
 ### `workspace`
 
