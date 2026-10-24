@@ -17,6 +17,8 @@ import java.util.List;
 public final class Console {
 
     private static final String RESET = "\u001B[0m";
+    private static final String OSC_8 = "\u001B]8;;";
+    private static final String STRING_TERMINATOR = "\u001B\\";
 
     private final TerminalCapabilities capabilities;
     private final InputStream in;
@@ -116,6 +118,23 @@ public final class Console {
 
     public String arrow() {
         return symbol("→", "->");
+    }
+
+    public String backArrow() {
+        return symbol("←", "<-");
+    }
+
+    /**
+     * Text that opens {@code url} when clicked, in terminals that support links (OSC 8); others show the text alone,
+     * as do output that isn't a terminal.
+     */
+    public String link(String text, String url) {
+
+        if (!capabilities.colors()) {
+            return text;
+        }
+
+        return OSC_8 + url + STRING_TERMINATOR + text + OSC_8 + STRING_TERMINATOR;
     }
 
     /**

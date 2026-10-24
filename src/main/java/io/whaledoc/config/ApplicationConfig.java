@@ -11,7 +11,7 @@ import java.io.InputStream;
 /**
  * Build-time settings from application.yml, which Maven fills in when the CLI is built.
  */
-public record ApplicationConfig(String apiUrl, String releasesUrl, String version) {
+public record ApplicationConfig(String apiUrl, String appUrl, String releasesUrl, String version) {
 
     private static final String CONFIG_FILE = "application.yml";
 
@@ -29,6 +29,7 @@ public record ApplicationConfig(String apiUrl, String releasesUrl, String versio
 
             return new ApplicationConfig(
                     config.at("/whaledoc/api/url").asText(),
+                    config.at("/whaledoc/app/url").asText(),
                     config.at("/whaledoc/releases/url").asText(),
                     config.at("/whaledoc/version").asText()
             );

@@ -26,6 +26,8 @@
         <maven.compiler.target>25</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <whaledoc.api.url>https://api.whaledoc.io</whaledoc.api.url>
+        <!-- The WhaleDoc app, where `whaledoc listen` links each event -->
+        <whaledoc.app.url>https://app.whaledoc.io</whaledoc.app.url>
         <!-- Where `whaledoc update` downloads releases from: {url}/latest/download/version.txt and {url}/download/v{version}/{file} -->
         <whaledoc.releases.url>https://github.com/whaledoc/whaledoc-cli/releases</whaledoc.releases.url>
         <picocli.version>4.7.7</picocli.version>
