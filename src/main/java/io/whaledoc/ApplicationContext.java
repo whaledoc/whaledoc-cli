@@ -46,7 +46,7 @@ public record ApplicationContext(
                 Console.system(),
                 ConfigManager.forCurrentUser(objectMapper),
                 new AuthClient(apiClient, sseClient, objectMapper),
-                new WebhookClient(apiClient, sseClient, httpClient, objectMapper),
+                new WebhookClient(apiClient, sseClient, createForwardClient(), objectMapper),
                 new WorkspaceClient(apiClient),
                 UpdateService.create(httpClient, config.releasesUrl())
         );
@@ -57,6 +57,17 @@ public record ApplicationContext(
 
         return HttpClient.newBuilder()
                 .followRedirects(HttpClient.Redirect.NORMAL)
+                .connectTimeout(CONNECT_TIMEOUT)
+                .build();
+    }
+
+    // Forwards to the user's local app: a redirect is its answer, never followed with the signed request, and plain
+    // HTTP/1.1 as local servers expect
+    private static HttpClient createForwardClient() {
+
+        return HttpClient.newBuilder()
+                .followRedirects(HttpClient.Redirect.NEVER)
+                .version(HttpClient.Version.HTTP_1_1)
                 .connectTimeout(CONNECT_TIMEOUT)
                 .build();
     }

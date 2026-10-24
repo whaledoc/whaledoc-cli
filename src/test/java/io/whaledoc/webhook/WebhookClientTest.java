@@ -3,6 +3,7 @@ package io.whaledoc.webhook;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.tomakehurst.wiremock.junit5.WireMockRuntimeInfo;
 import com.github.tomakehurst.wiremock.junit5.WireMockTest;
+import io.whaledoc.exceptions.ApiException;
 import io.whaledoc.http.ApiClient;
 import io.whaledoc.http.SseClient;
 import io.whaledoc.http.SseConnection;
@@ -62,7 +63,8 @@ class WebhookClientTest {
         HttpClient httpClient = HttpClient.newHttpClient();
         ObjectMapper objectMapper = new ObjectMapper();
         ApiClient apiClient = new ApiClient(httpClient, objectMapper, baseUrl);
-        webhookClient = new WebhookClient(apiClient, new SseClient(httpClient), httpClient, objectMapper);
+        HttpClient forwardClient = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NEVER).build();
+        webhookClient = new WebhookClient(apiClient, new SseClient(httpClient), forwardClient, objectMapper);
     }
 
     @AfterEach
@@ -80,12 +82,13 @@ class WebhookClientTest {
         stubFor(post(urlEqualTo("/events")).willReturn(ok("received")));
 
         // when
-        ForwardResult result = webhookClient.forward(URI.create(baseUrl + "/events"), EVENT);
+        Optional<ForwardResult> result = webhookClient.forward(URI.create(baseUrl + "/events"), EVENT);
 
         // then
-        assertThat(result.status()).contains(200);
-        assertThat(result.body()).contains("received");
+        assertThat(result).containsInstanceOf(ForwardResult.Answered.class);
+        assertThat(((ForwardResult.Answered) result.orElseThrow()).body()).isEqualTo("received");
         verify(postRequestedFor(urlEqualTo("/events"))
+                .withHeader("Content-Type", equalTo("application/json"))
                 .withHeader("webhook-id", equalTo(EVENT_ID))
                 .withHeader("webhook-timestamp", equalTo("1792072803"))
                 .withHeader("webhook-signature", equalTo(SIGNATURE))
@@ -101,12 +104,56 @@ class WebhookClientTest {
         stubFor(post(urlEqualTo("/events")).willReturn(aResponse().withStatus(500).withBody("boom")));
 
         // when
-        ForwardResult result = webhookClient.forward(URI.create(baseUrl + "/events"), EVENT);
+        Optional<ForwardResult> result = webhookClient.forward(URI.create(baseUrl + "/events"), EVENT);
 
         // then
-        assertThat(result.status()).contains(500);
-        assertThat(result.isSuccess()).isFalse();
-        assertThat(result.failure()).isEmpty();
+        assertThat(result).contains(new ForwardResult.Answered(500, "boom", durationOf(result)));
+    }
+
+    @Test
+    void shouldReportRedirectWithoutFollowingItWhenForwardTargetRedirects() {
+
+        // given
+        stubFor(post(urlEqualTo("/events")).willReturn(aResponse().withStatus(307).withHeader("Location", "/elsewhere")));
+
+        // when
+        Optional<ForwardResult> result = webhookClient.forward(URI.create(baseUrl + "/events"), EVENT);
+
+        // then
+        assertThat(result).contains(new ForwardResult.Answered(307, "", durationOf(result)));
+        verify(0, postRequestedFor(urlEqualTo("/elsewhere")));
+    }
+
+    @Test
+    void shouldLeaveOutHeadersOtherThanWebhookHeadersWhenForwarding() {
+
+        // given
+        stubFor(post(urlEqualTo("/events")).willReturn(ok()));
+        SignedEvent event = new SignedEvent(EVENT_ID, "job.completed",
+                Map.of("webhook-id", EVENT_ID, "Host", "evil.example", "Cookie", "session=1"), BODY);
+
+        // when
+        webhookClient.forward(URI.create(baseUrl + "/events"), event);
+
+        // then
+        verify(postRequestedFor(urlEqualTo("/events"))
+                .withHeader("webhook-id", equalTo(EVENT_ID))
+                .withHeader("Cookie", absent()));
+    }
+
+    @Test
+    void shouldForwardNonAsciiBodyByteForByteWhenForwarding() {
+
+        // given
+        stubFor(post(urlEqualTo("/events")).willReturn(ok()));
+        String body = "{\"name\":\"Malmö – 東京\"}";
+        SignedEvent event = new SignedEvent(EVENT_ID, "job.completed", HEADERS, body);
+
+        // when
+        webhookClient.forward(URI.create(baseUrl + "/events"), event);
+
+        // then
+        verify(postRequestedFor(urlEqualTo("/events")).withRequestBody(equalTo(body)));
     }
 
     @Test
@@ -116,12 +163,11 @@ class WebhookClientTest {
         URI target = URI.create("http://localhost:1/events");
 
         // when
-        ForwardResult result = webhookClient.forward(target, EVENT);
+        Optional<ForwardResult> result = webhookClient.forward(target, EVENT);
 
         // then
-        assertThat(result.status()).isEmpty();
-        assertThat(result.failure()).contains(new ForwardResult.Failure(ForwardResult.Kind.CONNECTION_FAILED,
-                "Unable to connect to localhost:1. Is the server running?"));
+        assertThat(result).contains(new ForwardResult.Unanswered(ForwardResult.Kind.CONNECTION_FAILED,
+                "Unable to connect to localhost:1. Is the server running?", durationOf(result)));
     }
 
     @Test
@@ -142,11 +188,24 @@ class WebhookClientTest {
     }
 
     @Test
+    void shouldThrowApiExceptionWhenStreamMessageHasNoBody() {
+
+        // given
+        SseEvent message = new SseEvent("job.completed", "{\"headers\": {}}", EVENT_ID);
+
+        // when
+        Throwable thrown = catchThrowable(() -> webhookClient.parse(message));
+
+        // then
+        assertThat(thrown).isInstanceOf(ApiException.class).hasMessage("WhaleDoc sent an event the CLI can't read.");
+    }
+
+    @Test
     void shouldReportLocalAnswerWhenForwardWasAnswered() {
 
         // given
         stubFor(post(urlEqualTo("/cli/webhooks/events/" + EVENT_ID + "/responses")).willReturn(noContent()));
-        ForwardResult result = ForwardResult.answered(200, "x".repeat(3000), 42);
+        ForwardResult result = new ForwardResult.Answered(200, "x".repeat(3000), 42);
 
         // when
         webhookClient.reportAnswer(ACCESS_TOKEN, URI.create("http://localhost:8080/events"), EVENT, result);
@@ -165,8 +224,8 @@ class WebhookClientTest {
 
         // given
         stubFor(post(urlEqualTo("/cli/webhooks/events/" + EVENT_ID + "/responses")).willReturn(noContent()));
-        ForwardResult result = ForwardResult.failed(ForwardResult.Kind.TIMEOUT, "localhost:8080 did not respond in time.",
-                10_000);
+        ForwardResult result = new ForwardResult.Unanswered(ForwardResult.Kind.TIMEOUT,
+                "localhost:8080 did not respond in time.", 10_000);
 
         // when
         webhookClient.reportAnswer(ACCESS_TOKEN, URI.create("http://localhost:8080/events"), EVENT, result);
@@ -219,7 +278,7 @@ class WebhookClientTest {
         CompletableFuture<SseEvent> completedReceived = new CompletableFuture<>();
 
         // when
-        connection = webhookClient.listen(ACCESS_TOKEN, Optional.empty(), Set.of("job.completed"), event -> {
+        connection = webhookClient.listen(ACCESS_TOKEN, Set.of("job.completed"), event -> {
             receivedEvents.add(event);
             if ("job.completed".equals(event.event())) {
                 completedReceived.complete(event);
@@ -240,7 +299,7 @@ class WebhookClientTest {
         CompletableFuture<SseEvent> readyReceived = new CompletableFuture<>();
 
         // when
-        connection = webhookClient.listen(ACCESS_TOKEN, Optional.of(URI.create("http://localhost:8080/events")),
+        connection = webhookClient.listen(ACCESS_TOKEN, URI.create("http://localhost:8080/events"),
                 Set.of(WebhookEvents.ALL), readyReceived::complete);
 
         // then
@@ -254,8 +313,7 @@ class WebhookClientTest {
         String accessToken = "";
 
         // when
-        Throwable thrown = catchThrowable(() -> webhookClient.listen(accessToken, Optional.empty(),
-                Set.of(WebhookEvents.ALL), event -> { }));
+        Throwable thrown = catchThrowable(() -> webhookClient.listen(accessToken, Set.of(WebhookEvents.ALL), event -> { }));
 
         // then
         assertThat(thrown)
@@ -275,6 +333,11 @@ class WebhookClientTest {
 
         // then
         assertThat(triggeredEvent).isEqualTo(expectedEvent);
+    }
+
+    private static long durationOf(Optional<ForwardResult> result) {
+
+        return result.orElseThrow().durationMs();
     }
 
     private void givenTestEventIsAccepted(String type) {

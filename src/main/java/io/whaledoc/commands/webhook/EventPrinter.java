@@ -30,9 +30,10 @@ final class EventPrinter {
 
     void printForwarded(SignedEvent event, ForwardResult result) {
 
-        String outcome = result.status()
-                .map(this::statusLabel)
-                .orElseGet(() -> console.red("failed") + " " + console.dim(result.failure().orElseThrow().reason()));
+        String outcome = switch (result) {
+            case ForwardResult.Answered answered -> statusLabel(answered.status());
+            case ForwardResult.Unanswered unanswered -> console.red("failed") + " " + console.dim(unanswered.reason());
+        };
 
         console.println(eventLine(event) + " " + outcome);
     }

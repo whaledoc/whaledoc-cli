@@ -200,8 +200,9 @@ Use it in your local app to check each event's signature, with the same
 everyone in your workspace, and you also find it on the Webhooks page in the WhaleDoc app. If someone rotates it
 there, `listen` reconnects and shows the new one.
 
-Your local app's answers (status and time) show up in the WhaleDoc app, next to each event, for everyone who manages
-webhooks in your workspace. They can also send a test event or an event again to your `listen`, or disconnect it.
+Your local app's answers show up in the WhaleDoc app, next to each event, for everyone who manages webhooks in your
+workspace: the status, the time it took, the first 2 KB of the answer and the local URL. Keep secrets out of your
+local app's error pages. They can also send a test event or an event again to your `listen`, or disconnect it.
 When someone disconnects it, `listen` tells you who and stops.
 
 You can combine event filtering and forwarding:
@@ -225,8 +226,9 @@ whaledoc trigger job.completed
 ```
 
 The event reaches `listen` like any other event, with sample data such as a job named "Sample job". You can try your
-integration without running a real job. It also appears among your workspace's events in the WhaleDoc app. Test events are only for local development: they never go to your workspace's webhook endpoints or to
-anyone else's `listen`. Any event from [Webhook Events](#webhook-events) works.
+integration without running a real job. It also appears among your workspace's events in the WhaleDoc app. Test events
+are only for local development: they never go to your workspace's webhook endpoints or to anyone else's `listen`. Any
+event from [Webhook Events](#webhook-events) works.
 
 ### `workspace`
 

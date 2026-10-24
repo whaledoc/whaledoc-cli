@@ -22,14 +22,17 @@ import picocli.CommandLine.Spec;
 
 import java.net.URI;
 import java.time.Clock;
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 @Command(
         name = "listen",
@@ -60,6 +63,7 @@ public class ListenCommand implements Callable<Integer> {
 
     private static final String SIGNING_SECRET = "signingSecret";
     private static final String DISCONNECTED_BY = "by";
+    private static final Duration READY_WAIT = Duration.ofSeconds(5);
 
     private final ConfigManager configManager;
     private final WebhookClient webhookClient;
@@ -88,8 +92,11 @@ public class ListenCommand implements Callable<Integer> {
     private URI forwardTarget;
     private boolean listening;
     private volatile SseConnection connection;
-    private volatile String signingSecret;
+    /** Read on the stream's thread only. */
+    private String signingSecret;
     private String accessToken;
+    /** Opened once "Ready!" is printed, so the signing secret is printed below it. */
+    private final CountDownLatch readyPrinted = new CountDownLatch(1);
     /** Virtual threads: a report still on its way never keeps the CLI from exiting. */
     private final ExecutorService reports = Executors.newVirtualThreadPerTaskExecutor();
 
@@ -114,14 +121,16 @@ public class ListenCommand implements Callable<Integer> {
         forwardTarget = resolveForwardTarget();
         accessToken = config.accessToken();
 
-        connection = webhookClient.listen(accessToken, Optional.ofNullable(forwardTarget), eventFilter,
-                new ListenListener());
+        connection = forwardTarget == null
+                ? webhookClient.listen(accessToken, eventFilter, new ListenListener())
+                : webhookClient.listen(accessToken, forwardTarget, eventFilter, new ListenListener());
         Runtime.getRuntime().addShutdownHook(new Thread(connection::close));
 
         try {
             if (awaitConnected(connection)) {
                 listening = true;
                 printReady();
+                readyPrinted.countDown();
             }
 
             connection.awaitCompletion();
@@ -245,17 +254,42 @@ public class ListenCommand implements Callable<Integer> {
     /** Shown when the stream opens, and again after a reconnect only when a teammate rotated it in the app. */
     private void showSigningSecret(SseEvent event) {
 
-        webhookClient.field(event, SIGNING_SECRET).ifPresent(secret -> {
-            String previous = signingSecret;
-            signingSecret = secret;
+        Optional<String> secret;
 
-            if (previous == null) {
-                console.println("Your webhook signing secret is " + console.bold(secret) + " "
-                        + console.dim("(your local app checks each event with it)"));
-            } else if (!previous.equals(secret)) {
-                console.warning("The webhook signing secret changed. Your local app needs the new one: " + secret);
-            }
-        });
+        try {
+            secret = webhookClient.field(event, SIGNING_SECRET);
+        } catch (ApiException e) {
+            console.warning("WhaleDoc sent no signing secret the CLI can read. Find it on the Webhooks page in the app.");
+            return;
+        }
+
+        secret.filter(received -> !received.equals(signingSecret)).ifPresent(this::printSigningSecret);
+    }
+
+    private void printSigningSecret(String secret) {
+
+        boolean first = Optional.ofNullable(signingSecret).isEmpty();
+        signingSecret = secret;
+
+        if (first) {
+            awaitReadyPrinted();
+            console.println("Your webhook signing secret is " + console.bold(secret) + " "
+                    + console.dim("(your local app checks each event with it)"));
+            console.println();
+            return;
+        }
+
+        console.println("The webhook signing secret changed. Your local app needs the new one: " + console.bold(secret));
+    }
+
+    /** At most a moment: when Ctrl+C ended the wait for the connection, "Ready!" never comes. */
+    private void awaitReadyPrinted() {
+
+        try {
+            readyPrinted.await(READY_WAIT.toMillis(), TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     /** A teammate disconnected this listener from the WhaleDoc app: stop instead of reconnecting. */
@@ -285,10 +319,12 @@ public class ListenCommand implements Callable<Integer> {
             return;
         }
 
-        // A failing local endpoint is reported per event; listening continues for the next one
-        ForwardResult result = webhookClient.forward(forwardTarget, event);
-        eventPrinter.printForwarded(event, result);
-        reports.execute(() -> report(event, result));
+        // A failing local endpoint is reported per event; listening continues for the next one. Nothing is shown or
+        // reported for a forward cut short by quitting
+        webhookClient.forward(forwardTarget, event).ifPresent(result -> {
+            eventPrinter.printForwarded(event, result);
+            reports.execute(() -> report(event, result));
+        });
     }
 
     /** In the background, and never shown: a report that fails doesn't stop listening. */

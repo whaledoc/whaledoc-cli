@@ -1,35 +1,26 @@
 package io.whaledoc.webhook;
 
-import java.util.Optional;
+/** What the local endpoint did with a forwarded event: its answer, or why there was none. */
+public sealed interface ForwardResult {
 
-/**
- * What the local endpoint did with a forwarded event: its {@code status} and the start of its {@code body} when it
- * answered, else why not.
- */
-public record ForwardResult(Optional<Integer> status, Optional<String> body, long durationMs, Optional<Failure> failure) {
+    long durationMs();
+
+    /** The local endpoint answered; {@code body} is its start, as much as WhaleDoc keeps. */
+    record Answered(int status, String body, long durationMs) implements ForwardResult {
+
+        public boolean isSuccess() {
+
+            return status >= 200 && status < 300;
+        }
+    }
 
     /** No answer: it took longer than the wait, or it couldn't be reached. {@code reason} is shown to the user. */
-    public record Failure(Kind kind, String reason) {
+    record Unanswered(Kind kind, String reason, long durationMs) implements ForwardResult {
     }
 
     /** The names WhaleDoc uses for a missing answer. */
-    public enum Kind {
+    enum Kind {
         TIMEOUT,
         CONNECTION_FAILED
-    }
-
-    public static ForwardResult answered(int status, String body, long durationMs) {
-
-        return new ForwardResult(Optional.of(status), Optional.of(body), durationMs, Optional.empty());
-    }
-
-    public static ForwardResult failed(Kind kind, String reason, long durationMs) {
-
-        return new ForwardResult(Optional.empty(), Optional.empty(), durationMs, Optional.of(new Failure(kind, reason)));
-    }
-
-    public boolean isSuccess() {
-
-        return status.filter(code -> code >= 200 && code < 300).isPresent();
     }
 }

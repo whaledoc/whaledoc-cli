@@ -111,7 +111,7 @@ class ListenCommandTest {
 
         // then
         assertThat(exitCode).isZero();
-        then(webhookClient).should().listen(eq(ACCESS_TOKEN), eq(Optional.empty()), eq(Set.of("*")), any());
+        then(webhookClient).should().listen(eq(ACCESS_TOKEN), eq(Set.of("*")), any());
     }
 
     @Test
@@ -125,21 +125,20 @@ class ListenCommandTest {
 
         // then
         assertThat(exitCode).isZero();
-        then(webhookClient).should()
-                .listen(eq(ACCESS_TOKEN), any(), eq(Set.of("job.completed", "document.created")), any());
+        then(webhookClient).should().listen(eq(ACCESS_TOKEN), eq(Set.of("job.completed", "document.created")), any());
     }
 
     @Test
     void shouldSendParsedForwardUrlWhenForwardUrlHasNoScheme() {
 
         // given
-        givenUserIsLoggedInAndListening();
+        givenUserIsLoggedInAndForwarding();
 
         // when
         commandLine.execute("--forward-to", "localhost:8080/events");
 
         // then
-        then(webhookClient).should().listen(eq(ACCESS_TOKEN), eq(Optional.of(URI.create(FORWARD_URL))), anySet(), any());
+        then(webhookClient).should().listen(eq(ACCESS_TOKEN), eq(URI.create(FORWARD_URL)), anySet(), any());
     }
 
     @Test
@@ -171,8 +170,9 @@ class ListenCommandTest {
         listener.onEvent(rotated);
 
         // then
-        assertThat(testConsole.output()).containsOnlyOnce("Your webhook signing secret is");
-        assertThat(testConsole.errors()).contains("The webhook signing secret changed. Your local app needs the new one: whsec_new");
+        assertThat(testConsole.output())
+                .containsOnlyOnce("Your webhook signing secret is")
+                .contains("The webhook signing secret changed. Your local app needs the new one: whsec_new");
     }
 
     @Test
@@ -192,12 +192,28 @@ class ListenCommandTest {
     }
 
     @Test
+    void shouldStopWithoutNameWhenDisconnectNamesNoOne() {
+
+        // given
+        SseListener listener = givenListeningWithForwardUrl(FORWARD_URL);
+        given(webhookClient.field(DISCONNECTED, "by")).willReturn(Optional.empty());
+
+        // when
+        listener.onEvent(DISCONNECTED);
+
+        // then
+        assertThat(testConsole.errors()).contains("This listener was disconnected from the WhaleDoc app.");
+        then(connection).should().close();
+    }
+
+    @Test
     void shouldForwardSignedEventWhenForwardUrlIsGiven() {
 
         // given
         SseListener listener = givenListeningWithForwardUrl("localhost:8080/events");
         given(webhookClient.parse(MESSAGE)).willReturn(EVENT);
-        given(webhookClient.forward(URI.create(FORWARD_URL), EVENT)).willReturn(ForwardResult.answered(200, "ok", 12));
+        given(webhookClient.forward(URI.create(FORWARD_URL), EVENT))
+                .willReturn(Optional.of(new ForwardResult.Answered(200, "ok", 12)));
 
         // when
         listener.onEvent(MESSAGE);
@@ -211,9 +227,9 @@ class ListenCommandTest {
 
         // given
         SseListener listener = givenListeningWithForwardUrl(FORWARD_URL);
-        ForwardResult result = ForwardResult.answered(200, "ok", 12);
+        ForwardResult result = new ForwardResult.Answered(200, "ok", 12);
         given(webhookClient.parse(MESSAGE)).willReturn(EVENT);
-        given(webhookClient.forward(URI.create(FORWARD_URL), EVENT)).willReturn(result);
+        given(webhookClient.forward(URI.create(FORWARD_URL), EVENT)).willReturn(Optional.of(result));
 
         // when
         listener.onEvent(MESSAGE);
@@ -228,8 +244,8 @@ class ListenCommandTest {
         // given
         SseListener listener = givenListeningWithForwardUrl(FORWARD_URL);
         given(webhookClient.parse(MESSAGE)).willReturn(EVENT);
-        given(webhookClient.forward(any(), any())).willReturn(ForwardResult.failed(ForwardResult.Kind.CONNECTION_FAILED,
-                "Unable to connect to localhost:8080. Is the server running?", 3));
+        given(webhookClient.forward(any(), any())).willReturn(Optional.of(new ForwardResult.Unanswered(
+                ForwardResult.Kind.CONNECTION_FAILED, "Unable to connect to localhost:8080. Is the server running?", 3)));
 
         // when
         Throwable thrown = catchThrowable(() -> listener.onEvent(MESSAGE));
@@ -288,9 +304,9 @@ class ListenCommandTest {
     // Runs the command and returns the handler it registered for incoming events
     private SseListener givenListeningWithForwardUrl(String forwardUrl) {
 
-        givenUserIsLoggedInAndListening();
+        givenUserIsLoggedInAndForwarding();
         commandLine.execute("--forward-to", forwardUrl);
-        then(webhookClient).should().listen(eq(ACCESS_TOKEN), any(), anySet(), listenerCaptor.capture());
+        then(webhookClient).should().listen(eq(ACCESS_TOKEN), any(URI.class), anySet(), listenerCaptor.capture());
 
         return listenerCaptor.getValue();
     }
@@ -301,10 +317,17 @@ class ListenCommandTest {
         given(connection.connected()).willReturn(CompletableFuture.completedFuture(null));
     }
 
+    private void givenUserIsLoggedInAndForwarding() {
+
+        given(configManager.load()).willReturn(createConfig(ACCESS_TOKEN));
+        given(webhookClient.listen(eq(ACCESS_TOKEN), any(URI.class), anySet(), any())).willReturn(connection);
+        given(connection.connected()).willReturn(CompletableFuture.completedFuture(null));
+    }
+
     private void givenUserIsLoggedInAndConnecting() {
 
         given(configManager.load()).willReturn(createConfig(ACCESS_TOKEN));
-        given(webhookClient.listen(eq(ACCESS_TOKEN), any(), anySet(), any())).willReturn(connection);
+        given(webhookClient.listen(eq(ACCESS_TOKEN), anySet(), any())).willReturn(connection);
     }
 
     private WhaleDocConfig createConfig(String accessToken) {
