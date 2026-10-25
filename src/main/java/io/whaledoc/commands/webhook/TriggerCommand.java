@@ -97,7 +97,6 @@ public class TriggerCommand implements Callable<Integer> {
     private void printTriggered(TriggeredEvent triggered) {
 
         console.success("Sent " + console.bold(triggered.type()) + " " + console.dim("(" + triggered.id() + ")"));
-        console.println(console.dim("Run ") + console.bold("whaledoc listen") + console.dim(" to receive test events."));
     }
 
     private String describeFailure(ApiException e) {
