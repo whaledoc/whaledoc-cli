@@ -20,8 +20,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @Slf4j
 public final class WebSocketConnection implements AutoCloseable {
 
-    /** How long a close waits for the server's answer before the connection is cut. */
+    /** How long writing the close frame may take before the connection is cut. */
     private static final Duration CLOSE_WAIT = Duration.ofSeconds(1);
+    /** How long writing one message may take before it is dropped. */
+    private static final Duration SEND_WAIT = Duration.ofSeconds(1);
 
     private final AtomicBoolean closed = new AtomicBoolean(false);
     private final CompletableFuture<Void> connected = new CompletableFuture<>();
@@ -106,7 +108,7 @@ public final class WebSocketConnection implements AutoCloseable {
     private static void sendNow(WebSocket socket, String message) {
 
         try {
-            socket.sendText(message, true).get(CLOSE_WAIT.toMillis(), TimeUnit.MILLISECONDS);
+            socket.sendText(message, true).get(SEND_WAIT.toMillis(), TimeUnit.MILLISECONDS);
         } catch (ExecutionException | TimeoutException e) {
             log.debug("A message to WhaleDoc was not sent", e);
         } catch (InterruptedException e) {

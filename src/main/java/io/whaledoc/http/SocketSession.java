@@ -3,6 +3,8 @@ package io.whaledoc.http;
 import io.whaledoc.exceptions.ApiException;
 import lombok.extern.slf4j.Slf4j;
 
+import java.io.IOException;
+import java.net.URI;
 import java.net.http.WebSocket;
 import java.nio.ByteBuffer;
 import java.time.Duration;
@@ -24,6 +26,7 @@ final class SocketSession implements WebSocket.Listener {
     private static final Duration SILENCE_LIMIT = Duration.ofSeconds(30);
     private static final Duration SILENCE_CHECK = Duration.ofSeconds(5);
 
+    private final URI uri;
     private final MessageListener listener;
     private final ExecutorService handler;
     private final StringBuilder partial = new StringBuilder();
@@ -31,8 +34,9 @@ final class SocketSession implements WebSocket.Listener {
     private final CompletableFuture<ApiException> end = new CompletableFuture<>();
     private volatile Instant lastHeard = Instant.now();
 
-    SocketSession(MessageListener listener, ExecutorService handler) {
+    SocketSession(URI uri, MessageListener listener, ExecutorService handler) {
 
+        this.uri = uri;
         this.listener = listener;
         this.handler = handler;
     }
@@ -84,7 +88,9 @@ final class SocketSession implements WebSocket.Listener {
     @Override
     public void onError(WebSocket webSocket, Throwable error) {
 
-        end.complete(new ApiException("The connection to WhaleDoc failed.", error));
+        String reason = error instanceof IOException io ? NetworkErrors.describe(uri, io)
+                : "The connection to WhaleDoc failed.";
+        end.complete(new ApiException(reason, error));
     }
 
     /** Waits for the close, the error, or 30 seconds without a word from WhaleDoc. */
@@ -94,15 +100,12 @@ final class SocketSession implements WebSocket.Listener {
             try {
                 return end.get(SILENCE_CHECK.toMillis(), TimeUnit.MILLISECONDS);
 
-            } catch (TimeoutException e) {
+            } catch (TimeoutException | ExecutionException e) {
 
                 if (Duration.between(lastHeard, Instant.now()).compareTo(SILENCE_LIMIT) > 0) {
                     socket.abort();
                     return new ApiException("WhaleDoc stopped answering.");
                 }
-
-            } catch (ExecutionException e) {
-                return new ApiException("The connection to WhaleDoc failed.", e.getCause());
             }
         }
     }

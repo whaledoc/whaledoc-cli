@@ -248,7 +248,8 @@ public final class WebhookClient {
 
     private static boolean isWanted(ListenMessage message, Set<String> events) {
 
-        return !message.isEvent() || events.contains(WebhookEvents.ALL) || events.contains(message.event());
+        return !message.isEvent() || events.contains(WebhookEvents.ALL)
+                || (message.event() != null && events.contains(message.event()));
     }
 
     private static AnswerMessage toAnswer(URI target, SignedEvent event, ForwardResult result) {

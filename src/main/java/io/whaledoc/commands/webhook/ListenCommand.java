@@ -169,6 +169,11 @@ public class ListenCommand implements Callable<Integer> {
             return false;
 
         } catch (ExecutionException e) {
+
+            if (e.getCause() instanceof CancellationException) {
+                return false;
+            }
+
             throw e.getCause() instanceof ApiException apiException
                     ? apiException
                     : new ApiException("Unable to connect to WhaleDoc.", e.getCause());
