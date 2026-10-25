@@ -7,10 +7,10 @@ import io.whaledoc.exceptions.ApiException;
 import io.whaledoc.http.ApiClient;
 import io.whaledoc.http.ApiConstants;
 import io.whaledoc.http.NetworkErrors;
-import io.whaledoc.http.SseClient;
-import io.whaledoc.http.SseConnection;
-import io.whaledoc.http.SseEvent;
-import io.whaledoc.http.SseListener;
+import io.whaledoc.http.MessageListener;
+import io.whaledoc.http.Reconnect;
+import io.whaledoc.http.WebSocketClient;
+import io.whaledoc.http.WebSocketConnection;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 
@@ -50,21 +50,25 @@ public final class WebhookClient {
     /** Enough bytes for {@link #REPORTED_BODY_LENGTH} characters in any encoding; the rest is never read. */
     private static final int READ_BODY_BYTES = REPORTED_BODY_LENGTH * 4;
     private static final String FORWARD_TO_PARAMETER = "?forwardTo=";
-    /** The headers a webhook delivery carries; anything else from the stream is left out. */
+    private static final String TYPE = "type";
+    private static final String EVENT_TYPE = "event";
+    private static final String ID = "id";
+    /** The headers a webhook delivery carries; anything else WhaleDoc sent is left out. */
     private static final Set<String> FORWARDED_HEADERS = Set.of("content-type", "user-agent");
     private static final Set<String> FORWARDED_HEADER_PREFIXES = Set.of("webhook-", "whaledoc-");
-    /** Closing the stream ends a read still waiting here. */
+    /** Closing the forward's answer ends a read still waiting here. */
     private static final ExecutorService BODY_READERS = Executors.newVirtualThreadPerTaskExecutor();
 
     private final ApiClient apiClient;
-    private final SseClient sseClient;
+    private final WebSocketClient webSocketClient;
     private final HttpClient forwardClient;
     private final ObjectMapper objectMapper;
 
     /** {@code forwardClient} follows no redirects: a redirect is the local endpoint's answer, reported as it is. */
-    public WebhookClient(ApiClient apiClient, SseClient sseClient, HttpClient forwardClient, ObjectMapper objectMapper) {
+    public WebhookClient(ApiClient apiClient, WebSocketClient webSocketClient, HttpClient forwardClient,
+                         ObjectMapper objectMapper) {
         this.apiClient = apiClient;
-        this.sseClient = sseClient;
+        this.webSocketClient = webSocketClient;
         this.forwardClient = forwardClient;
         this.objectMapper = objectMapper;
     }
@@ -94,10 +98,10 @@ public final class WebhookClient {
         }
     }
 
-    /** An event message of the stream: the type and id, with the request WhaleDoc signed for it. */
-    public SignedEvent parse(SseEvent event) {
+    /** An {@code event} message: the event's type and id, with the request WhaleDoc signed for it. */
+    public SignedEvent parse(ListenMessage event) {
 
-        JsonNode message = readTree(event.data());
+        JsonNode message = readTree(event.json());
         JsonNode body = message.path("body");
 
         if (!body.isTextual()) {
@@ -121,10 +125,10 @@ public final class WebhookClient {
         }
     }
 
-    /** A field of a stream message about the stream itself, such as the signing secret of {@code ready}. */
-    public Optional<String> field(SseEvent event, String name) {
+    /** A field of a message about the connection itself, such as the signing secret of {@code ready}. */
+    public Optional<String> field(ListenMessage message, String name) {
 
-        return Optional.ofNullable(readTree(event.data()).get(name)).flatMap(WebhookClient::text);
+        return Optional.ofNullable(readTree(message.json()).get(name)).flatMap(WebhookClient::text);
     }
 
     /**
@@ -153,15 +157,14 @@ public final class WebhookClient {
         }
     }
 
-    /** Tells WhaleDoc what the local endpoint answered, for the app's Events tab. */
-    public void reportAnswer(String accessToken, URI target, SignedEvent event, ForwardResult result) {
+    /** The {@code answer} message that tells WhaleDoc what the local endpoint answered, for the app's Events tab. */
+    public String answerMessage(URI target, SignedEvent event, ForwardResult result) {
 
-        if (StringUtils.isBlank(event.id())) {
-            return;
+        try {
+            return objectMapper.writeValueAsString(toAnswer(target, event, result));
+        } catch (JsonProcessingException e) {
+            throw new ApiException("The CLI couldn't write the answer for WhaleDoc.", e);
         }
-
-        String path = ApiConstants.WEBHOOK_EVENT_RESPONSES.formatted(URLEncoder.encode(event.id(), StandardCharsets.UTF_8));
-        apiClient.postAuthorizedWithoutAnswer(path, accessToken, toLocalAnswer(target, result));
     }
 
     /** Asks the API to send a test event of this type, with sample data, to the logged-in workspace. */
@@ -176,22 +179,22 @@ public final class WebhookClient {
     }
 
     /**
-     * Opens the event stream. Messages about the stream itself always come through; events only when {@code events}
+     * Opens the connection. Messages about the connection itself always come through; events only when {@code events}
      * names them or is {@link WebhookEvents#ALL}.
      */
-    public SseConnection listen(String accessToken, Set<String> events, SseListener listener) {
+    public WebSocketConnection listen(String accessToken, Set<String> events, ListenListener listener) {
 
         return connect(accessToken, "", events, listener);
     }
 
-    /** As {@link #listen(String, Set, SseListener)}, telling WhaleDoc where events are forwarded, for the app to show. */
-    public SseConnection listen(String accessToken, URI forwardTo, Set<String> events, SseListener listener) {
+    /** As {@link #listen(String, Set, ListenListener)}, telling WhaleDoc where events are forwarded, for the app to show. */
+    public WebSocketConnection listen(String accessToken, URI forwardTo, Set<String> events, ListenListener listener) {
 
         String query = FORWARD_TO_PARAMETER + URLEncoder.encode(forwardTo.toString(), StandardCharsets.UTF_8);
         return connect(accessToken, query, events, listener);
     }
 
-    private SseConnection connect(String accessToken, String query, Set<String> events, SseListener listener) {
+    private WebSocketConnection connect(String accessToken, String query, Set<String> events, ListenListener listener) {
 
         if (StringUtils.isBlank(accessToken)) {
             throw new IllegalArgumentException("accessToken is required");
@@ -200,28 +203,62 @@ public final class WebhookClient {
         Objects.requireNonNull(events);
         Objects.requireNonNull(listener);
 
-        URI uri = URI.create(apiClient.baseUrl() + ApiConstants.WEBHOOK_EVENTS + query);
-        return sseClient.connect(uri, accessToken, listener.filter(event -> isWanted(event, events)));
+        URI uri = URI.create(webSocketUrl(apiClient.baseUrl()) + ApiConstants.WEBHOOK_EVENTS + query);
+        return webSocketClient.connect(uri, accessToken, new MessageListener() {
+
+            @Override
+            public void onMessage(String message) {
+                readMessage(message).filter(read -> isWanted(read, events)).ifPresent(listener::onMessage);
+            }
+
+            @Override
+            public void onReconnecting(Reconnect reconnect) {
+                listener.onReconnecting(reconnect);
+            }
+
+            @Override
+            public void onReconnected() {
+                listener.onReconnected();
+            }
+        });
     }
 
-    private static boolean isWanted(SseEvent event, Set<String> events) {
+    /** The API's address with the WebSocket scheme: {@code https} becomes {@code wss}, {@code http} becomes {@code ws}. */
+    private static String webSocketUrl(String baseUrl) {
 
-        if (event.event() == null) {
-            return events.contains(WebhookEvents.ALL);
+        return baseUrl.replaceFirst("^http", "ws");
+    }
+
+    /** Nothing for a message that isn't a JSON object: it is logged and skipped, and listening goes on. */
+    private Optional<ListenMessage> readMessage(String message) {
+
+        try {
+            JsonNode json = objectMapper.readTree(message);
+            return Optional.of(new ListenMessage(textOf(json, TYPE), textOf(json, EVENT_TYPE), textOf(json, ID), message));
+        } catch (JsonProcessingException e) {
+            log.warn("Unreadable message from WhaleDoc skipped", e);
+            return Optional.empty();
         }
-
-        return WebhookEvents.STREAM_MESSAGES.contains(event.event())
-                || events.contains(WebhookEvents.ALL)
-                || events.contains(event.event());
     }
 
-    private static LocalAnswer toLocalAnswer(URI target, ForwardResult result) {
+    private static String textOf(JsonNode json, String field) {
+
+        return Optional.ofNullable(json.get(field)).flatMap(WebhookClient::text).orElse(null);
+    }
+
+    private static boolean isWanted(ListenMessage message, Set<String> events) {
+
+        return !message.isEvent() || events.contains(WebhookEvents.ALL) || events.contains(message.event());
+    }
+
+    private static AnswerMessage toAnswer(URI target, SignedEvent event, ForwardResult result) {
 
         return switch (result) {
-            case ForwardResult.Answered answered -> new LocalAnswer(target.toString(), answered.status(),
-                    answered.durationMs(), StringUtils.truncate(answered.body(), REPORTED_BODY_LENGTH), null);
-            case ForwardResult.Unanswered unanswered -> new LocalAnswer(target.toString(), null,
-                    unanswered.durationMs(), null, unanswered.kind().name());
+            case ForwardResult.Answered answered -> new AnswerMessage(WebhookEvents.ANSWER, event.id(),
+                    target.toString(), answered.status(), answered.durationMs(),
+                    StringUtils.truncate(answered.body(), REPORTED_BODY_LENGTH), null);
+            case ForwardResult.Unanswered unanswered -> new AnswerMessage(WebhookEvents.ANSWER, event.id(),
+                    target.toString(), null, unanswered.durationMs(), null, unanswered.kind().name());
         };
     }
 
@@ -304,7 +341,8 @@ public final class WebhookClient {
     private record TriggerRequest(String type) {
     }
 
-    /** The report's JSON: absent values are {@code null}, as WhaleDoc expects. */
-    private record LocalAnswer(String forwardUrl, Integer status, long durationMs, String body, String failure) {
+    /** The {@code answer} message's JSON: absent values are {@code null}, as WhaleDoc expects. */
+    private record AnswerMessage(String type, String eventId, String forwardUrl, Integer status, long durationMs,
+                                 String body, String failure) {
     }
 }

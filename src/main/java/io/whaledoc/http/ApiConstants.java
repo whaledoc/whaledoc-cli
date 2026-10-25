@@ -14,10 +14,9 @@ public final class ApiConstants {
     public static final String AUTH_LOGOUT = "/cli/auth/logout";
     public static final String AUTH_ME = "/cli/auth/me";
 
-    // webhook listener
+    // webhook listener (the events are a WebSocket)
     public static final String WEBHOOK_EVENTS = "/cli/webhooks/events";
     public static final String WEBHOOK_TEST_EVENTS = "/cli/webhooks/test-events";
-    public static final String WEBHOOK_EVENT_RESPONSES = "/cli/webhooks/events/%s/responses";
 
     // workspaces
     public static final String WORKSPACES = "/cli/workspaces";

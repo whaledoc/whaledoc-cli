@@ -6,10 +6,10 @@ import io.whaledoc.console.Console;
 import io.whaledoc.console.Spinner;
 import io.whaledoc.exceptions.ApiException;
 import io.whaledoc.http.Reconnect;
-import io.whaledoc.http.SseConnection;
-import io.whaledoc.http.SseEvent;
-import io.whaledoc.http.SseListener;
+import io.whaledoc.http.WebSocketConnection;
 import io.whaledoc.webhook.ForwardResult;
+import io.whaledoc.webhook.ListenListener;
+import io.whaledoc.webhook.ListenMessage;
 import io.whaledoc.webhook.SignedEvent;
 import io.whaledoc.webhook.WebhookClient;
 import io.whaledoc.webhook.WebhookEvents;
@@ -30,8 +30,6 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 @Command(
@@ -97,14 +95,11 @@ public class ListenCommand implements Callable<Integer> {
 
     private URI forwardTarget;
     private boolean listening;
-    private volatile SseConnection connection;
-    /** Read on the stream's thread only. */
+    private volatile WebSocketConnection connection;
+    /** Read on the thread that handles WhaleDoc's messages only. */
     private String signingSecret;
-    private String accessToken;
     /** Opened once "Ready!" is printed, so the signing secret is printed below it. */
     private final CountDownLatch readyPrinted = new CountDownLatch(1);
-    /** Virtual threads: a report still on its way never keeps the CLI from exiting. */
-    private final ExecutorService reports = Executors.newVirtualThreadPerTaskExecutor();
 
     /** {@code appUrl}: the WhaleDoc app, where each printed event links to. */
     public ListenCommand(ConfigManager configManager, WebhookClient webhookClient, Console console, String appUrl) {
@@ -126,11 +121,12 @@ public class ListenCommand implements Callable<Integer> {
 
         Set<String> eventFilter = resolveEvents();
         forwardTarget = resolveForwardTarget();
-        accessToken = config.accessToken();
+        String accessToken = config.accessToken();
 
         connection = forwardTarget == null
-                ? webhookClient.listen(accessToken, eventFilter, new ListenListener())
-                : webhookClient.listen(accessToken, forwardTarget, eventFilter, new ListenListener());
+                ? webhookClient.listen(accessToken, eventFilter, new MessageHandler())
+                : webhookClient.listen(accessToken, forwardTarget, eventFilter, new MessageHandler());
+        // Ctrl+C and a closed terminal: a normal close rather than a dropped connection
         Runtime.getRuntime().addShutdownHook(new Thread(connection::close));
 
         try {
@@ -156,11 +152,11 @@ public class ListenCommand implements Callable<Integer> {
     }
 
     /**
-     * Waits until the event stream is open, so "Ready!" is only shown when events can actually arrive.
+     * Waits until the connection is open, so "Ready!" is only shown when events can actually arrive.
      *
      * @return false when the connection was closed before it opened, e.g. with Ctrl+C
      */
-    private boolean awaitConnected(SseConnection connection) throws InterruptedException {
+    private boolean awaitConnected(WebSocketConnection connection) throws InterruptedException {
 
         Spinner spinner = console.spinner("Connecting to WhaleDoc...");
         spinner.start();
@@ -203,18 +199,19 @@ public class ListenCommand implements Callable<Integer> {
         return listening ? "Stopped listening: " + e.getMessage() : e.getMessage();
     }
 
-    private final class ListenListener implements SseListener {
+    private final class MessageHandler implements ListenListener {
 
         @Override
-        public void onEvent(SseEvent event) {
-            handleEvent(event);
+        public void onMessage(ListenMessage message) {
+            handleMessage(message);
         }
 
         @Override
         public void onReconnecting(Reconnect reconnect) {
 
-            console.warning("Connection lost. Reconnecting in %ds (attempt %d of %d)...".formatted(
-                    reconnect.delay().toSeconds(), reconnect.attempt(), reconnect.maxAttempts()));
+            String when = reconnect.delay().isZero() ? "" : " in %ds".formatted(reconnect.delay().toSeconds());
+            console.warning("Connection lost. Reconnecting%s (attempt %d of %d)...".formatted(
+                    when, reconnect.attempt(), reconnect.maxAttempts()));
         }
 
         @Override
@@ -249,17 +246,19 @@ public class ListenCommand implements Callable<Integer> {
         }
     }
 
-    private void handleEvent(SseEvent event) {
+    /** A type this version doesn't know is skipped: WhaleDoc may add some. */
+    private void handleMessage(ListenMessage message) {
 
-        switch (event.event()) {
-            case WebhookEvents.READY -> showSigningSecret(event);
-            case WebhookEvents.DISCONNECTED -> stopAsDisconnected(event);
-            case null, default -> handleWebhookEvent(event);
+        switch (message.type()) {
+            case WebhookEvents.READY -> showSigningSecret(message);
+            case WebhookEvents.EVENT -> handleWebhookEvent(message);
+            case WebhookEvents.DISCONNECTED -> stopAsDisconnected(message);
+            case null, default -> log.debug("Message of type {} skipped", message.type());
         }
     }
 
-    /** Shown when the stream opens, and again after a reconnect only when a teammate rotated it in the app. */
-    private void showSigningSecret(SseEvent event) {
+    /** Shown when the connection opens, and again after a reconnect only when a teammate rotated it in the app. */
+    private void showSigningSecret(ListenMessage event) {
 
         Optional<String> secret;
 
@@ -300,7 +299,7 @@ public class ListenCommand implements Callable<Integer> {
     }
 
     /** A teammate disconnected this listener from the WhaleDoc app: stop instead of reconnecting. */
-    private void stopAsDisconnected(SseEvent event) {
+    private void stopAsDisconnected(ListenMessage event) {
 
         String who = webhookClient.field(event, DISCONNECTED_BY)
                 .map(name -> name + " disconnected this listener")
@@ -309,7 +308,7 @@ public class ListenCommand implements Callable<Integer> {
         connection.close();
     }
 
-    private void handleWebhookEvent(SseEvent message) {
+    private void handleWebhookEvent(ListenMessage message) {
 
         SignedEvent event;
 
@@ -332,10 +331,10 @@ public class ListenCommand implements Callable<Integer> {
         }
 
         // A failing local endpoint is reported per event; listening continues for the next one. Nothing is shown or
-        // reported for a forward cut short by quitting
+        // sent back for a forward cut short by quitting
         webhookClient.forward(forwardTarget, event).ifPresent(result -> {
             eventPrinter.printForwarded(forwardTarget, event, result);
-            reports.execute(() -> report(event, result));
+            answer(event, result);
         });
     }
 
@@ -347,14 +346,14 @@ public class ListenCommand implements Callable<Integer> {
         console.println("");
     }
 
-    /** In the background, and never shown: a report that fails doesn't stop listening. */
-    private void report(SignedEvent event, ForwardResult result) {
+    /** On the same connection, and never shown: an answer that doesn't arrive doesn't stop listening. */
+    private void answer(SignedEvent event, ForwardResult result) {
 
         try {
-            webhookClient.reportAnswer(accessToken, forwardTarget, event, result);
+            connection.send(webhookClient.answerMessage(forwardTarget, event, result));
         } catch (RuntimeException e) {
-            // Broad on purpose: the report is only for the app's Events tab, and listening goes on
-            log.debug("Reporting the answer to {} failed", event.id(), e);
+            // Broad on purpose: the answer is only for the app's Events tab, and listening goes on
+            log.debug("Sending the answer to {} failed", event.id(), e);
         }
     }
 }

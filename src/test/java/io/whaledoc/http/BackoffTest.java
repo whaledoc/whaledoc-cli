@@ -39,6 +39,35 @@ class BackoffTest {
     }
 
     @Test
+    void shouldReconnectAtOnceFirstWhenReconnectingAtOnce() {
+
+        // given
+        Backoff backoff = Backoff.reconnectingAtOnce();
+        backoff.connected();
+        List<Duration> expectedDelays = new ArrayList<>(List.of(Duration.ZERO));
+        expectedDelays.addAll(createDelays(1, 2, 4, 8, 16, 30, 30, 30, 30));
+
+        // when
+        List<Duration> actualDelays = collectDelays(backoff);
+
+        // then
+        assertThat(actualDelays).isEqualTo(expectedDelays);
+    }
+
+    @Test
+    void shouldWaitBeforeFirstAttemptWhenReconnectingAtOnceButNeverConnected() {
+
+        // given
+        Backoff backoff = Backoff.reconnectingAtOnce();
+
+        // when
+        List<Duration> actualDelays = collectDelays(backoff);
+
+        // then
+        assertThat(actualDelays).containsExactly(Duration.ofSeconds(1), Duration.ofSeconds(2));
+    }
+
+    @Test
     void shouldStartOverWhenReconnected() {
 
         // given
