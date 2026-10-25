@@ -11,6 +11,7 @@ import java.net.http.WebSocket;
 import java.net.http.WebSocketHandshakeException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -86,7 +87,7 @@ public final class WebSocketClient {
             ApiException dropReason;
 
             try {
-                SocketSession session = new SocketSession(listener, handler);
+                SocketSession session = new SocketSession(target.uri(), listener, handler);
                 WebSocket socket = open(target, session);
                 connection.setSocket(socket);
                 onConnected(connection, backoff, listener);
@@ -114,15 +115,21 @@ public final class WebSocketClient {
 
     private WebSocket open(Target target, SocketSession session) throws InterruptedException {
 
+        CompletableFuture<WebSocket> handshake = httpClient.newWebSocketBuilder()
+                .header("Authorization", "Bearer " + target.accessToken())
+                .header(ApiConstants.API_VERSION_HEADER, ApiConstants.API_VERSION)
+                .buildAsync(target.uri(), session);
+
         try {
-            return httpClient.newWebSocketBuilder()
-                    .header("Authorization", "Bearer " + target.accessToken())
-                    .header(ApiConstants.API_VERSION_HEADER, ApiConstants.API_VERSION)
-                    .buildAsync(target.uri(), session)
-                    .get();
+            return handshake.get();
 
         } catch (ExecutionException e) {
             throw handshakeFailure(target.uri(), e.getCause());
+
+        } catch (InterruptedException e) {
+            // Closed while connecting: a handshake that still succeeds is cut at once
+            handshake.thenAccept(WebSocket::abort);
+            throw e;
         }
     }
 
@@ -200,9 +207,10 @@ public final class WebSocketClient {
         return new ApiException("Lost the connection to WhaleDoc and couldn't reconnect: " + reason, dropReason);
     }
 
-    // Server errors and rate limiting are temporary; rejected tokens and other client errors are not
+    // Network failures (no status), server errors and rate limiting are temporary; rejected tokens and other client
+    // errors are not
     private static boolean isRetryable(ApiException e) {
-        return e.statusCode() >= 500 || e.statusCode() == 429;
+        return e.statusCode() < 0 || e.statusCode() >= 500 || e.statusCode() == 429;
     }
 
     private static boolean sleep(Duration delay) {
