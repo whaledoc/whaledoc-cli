@@ -5,12 +5,11 @@ import com.github.tomakehurst.wiremock.junit5.WireMockRuntimeInfo;
 import com.github.tomakehurst.wiremock.junit5.WireMockTest;
 import io.whaledoc.exceptions.ApiException;
 import io.whaledoc.http.ApiClient;
-import io.whaledoc.http.SseClient;
-import io.whaledoc.http.SseConnection;
-import io.whaledoc.http.SseEvent;
-import org.junit.jupiter.api.AfterEach;
+import io.whaledoc.http.MessageListener;
+import io.whaledoc.http.WebSocketClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -18,16 +17,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.TimeUnit;
+import java.util.ArrayList;
 
-import static com.github.tomakehurst.wiremock.client.WireMock.absent;
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
+import static com.github.tomakehurst.wiremock.client.WireMock.absent;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalToJson;
-import static com.github.tomakehurst.wiremock.client.WireMock.get;
-import static com.github.tomakehurst.wiremock.client.WireMock.noContent;
 import static com.github.tomakehurst.wiremock.client.WireMock.ok;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
@@ -36,6 +31,11 @@ import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.verify;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
+import static org.assertj.core.api.Assertions.tuple;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.mock;
 
 @WireMockTest
 class WebhookClientTest {
@@ -54,7 +54,7 @@ class WebhookClientTest {
 
     private WebhookClient webhookClient;
     private String baseUrl;
-    private SseConnection connection;
+    private final WebSocketClient webSocketClient = mock(WebSocketClient.class);
 
     @BeforeEach
     void setUp(WireMockRuntimeInfo wireMock) {
@@ -64,15 +64,7 @@ class WebhookClientTest {
         ObjectMapper objectMapper = new ObjectMapper();
         ApiClient apiClient = new ApiClient(httpClient, objectMapper, baseUrl);
         HttpClient forwardClient = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NEVER).build();
-        webhookClient = new WebhookClient(apiClient, new SseClient(httpClient), forwardClient, objectMapper);
-    }
-
-    @AfterEach
-    void tearDown() {
-
-        if (connection != null) {
-            connection.close();
-        }
+        webhookClient = new WebhookClient(apiClient, webSocketClient, forwardClient, objectMapper);
     }
 
     @Test
@@ -171,12 +163,12 @@ class WebhookClientTest {
     }
 
     @Test
-    void shouldReadHeadersAndBodyWhenParsingStreamMessage() {
+    void shouldReadHeadersAndBodyWhenParsingEventMessage() {
 
         // given
-        SseEvent message = new SseEvent("job.completed", """
-                {"headers": {"webhook-id": "evt_01J9Z3K4XQ", "webhook-signature": "v1,abc"}, "body": "{\\"a\\":1}"}
-                """, EVENT_ID);
+        ListenMessage message = new ListenMessage("event", "job.completed", EVENT_ID, """
+                {"type": "event", "headers": {"webhook-id": "evt_01J9Z3K4XQ", "webhook-signature": "v1,abc"}, "body": "{\\"a\\":1}"}
+                """);
         SignedEvent expected = new SignedEvent(EVENT_ID, "job.completed",
                 Map.of("webhook-id", EVENT_ID, "webhook-signature", "v1,abc"), "{\"a\":1}");
 
@@ -201,10 +193,10 @@ class WebhookClientTest {
     }
 
     @Test
-    void shouldThrowApiExceptionWhenStreamMessageHasNoBody() {
+    void shouldThrowApiExceptionWhenEventMessageHasNoBody() {
 
         // given
-        SseEvent message = new SseEvent("job.completed", "{\"headers\": {}}", EVENT_ID);
+        ListenMessage message = new ListenMessage("event", "job.completed", EVENT_ID, "{\"headers\": {}}");
 
         // when
         Throwable thrown = catchThrowable(() -> webhookClient.parse(message));
@@ -214,41 +206,38 @@ class WebhookClientTest {
     }
 
     @Test
-    void shouldReportLocalAnswerWhenForwardWasAnswered() {
+    void shouldWriteAnswerMessageWhenForwardWasAnswered() {
 
         // given
-        stubFor(post(urlEqualTo("/cli/webhooks/events/" + EVENT_ID + "/responses")).willReturn(noContent()));
         ForwardResult result = new ForwardResult.Answered(200, "x".repeat(3000), 42);
+        String expected = """
+                {"type": "answer", "eventId": "%s", "forwardUrl": "http://localhost:8080/events", "status": 200,
+                 "durationMs": 42, "body": "%s", "failure": null}
+                """.formatted(EVENT_ID, "x".repeat(2048));
 
         // when
-        webhookClient.reportAnswer(ACCESS_TOKEN, URI.create("http://localhost:8080/events"), EVENT, result);
+        String message = webhookClient.answerMessage(URI.create("http://localhost:8080/events"), EVENT, result);
 
         // then
-        verify(postRequestedFor(urlEqualTo("/cli/webhooks/events/" + EVENT_ID + "/responses"))
-                .withHeader("Authorization", equalTo("Bearer " + ACCESS_TOKEN))
-                .withRequestBody(equalToJson("""
-                        {"forwardUrl": "http://localhost:8080/events", "status": 200, "durationMs": 42,
-                         "body": "%s", "failure": null}
-                        """.formatted("x".repeat(2048)))));
+        assertThat(equalToJson(expected).match(message).isExactMatch()).isTrue();
     }
 
     @Test
-    void shouldReportFailureWithoutStatusWhenForwardWasNotAnswered() {
+    void shouldWriteFailureWithoutStatusWhenForwardWasNotAnswered() {
 
         // given
-        stubFor(post(urlEqualTo("/cli/webhooks/events/" + EVENT_ID + "/responses")).willReturn(noContent()));
         ForwardResult result = new ForwardResult.Unanswered(ForwardResult.Kind.TIMEOUT,
                 "localhost:8080 did not respond in time.", 10_000);
+        String expected = """
+                {"type": "answer", "eventId": "%s", "forwardUrl": "http://localhost:8080/events", "status": null,
+                 "durationMs": 10000, "body": null, "failure": "TIMEOUT"}
+                """.formatted(EVENT_ID);
 
         // when
-        webhookClient.reportAnswer(ACCESS_TOKEN, URI.create("http://localhost:8080/events"), EVENT, result);
+        String message = webhookClient.answerMessage(URI.create("http://localhost:8080/events"), EVENT, result);
 
         // then
-        verify(postRequestedFor(urlEqualTo("/cli/webhooks/events/" + EVENT_ID + "/responses"))
-                .withRequestBody(equalToJson("""
-                        {"forwardUrl": "http://localhost:8080/events", "status": null, "durationMs": 10000,
-                         "body": null, "failure": "TIMEOUT"}
-                        """)));
+        assertThat(equalToJson(expected).match(message).isExactMatch()).isTrue();
     }
 
     @Test
@@ -280,43 +269,37 @@ class WebhookClientTest {
     }
 
     @Test
-    void shouldDeliverRequestedEventsAndStreamMessagesWhenListening() throws Exception {
+    void shouldDeliverRequestedEventsAndConnectionMessagesWhenListening() {
 
         // given
-        SseEvent ready = new SseEvent("ready", "{\"signingSecret\":\"whsec_abc\"}", null);
-        SseEvent failed = new SseEvent("job.failed", "{}", "2");
-        SseEvent completed = new SseEvent("job.completed", "{}", "1");
-        givenWebhookEventsAreStreamed("/cli/webhooks/events", ready, failed, completed);
-        List<SseEvent> receivedEvents = new CopyOnWriteArrayList<>();
-        CompletableFuture<SseEvent> completedReceived = new CompletableFuture<>();
+        List<ListenMessage> received = new ArrayList<>();
+        MessageListener socket = givenListening(Set.of("job.completed"), received);
 
         // when
-        connection = webhookClient.listen(ACCESS_TOKEN, Set.of("job.completed"), event -> {
-            receivedEvents.add(event);
-            if ("job.completed".equals(event.event())) {
-                completedReceived.complete(event);
-            }
-        });
+        socket.onMessage("{\"type\": \"ready\", \"signingSecret\": \"whsec_abc\"}");
+        socket.onMessage("{\"type\": \"event\", \"event\": \"job.failed\", \"id\": \"evt_2\"}");
+        socket.onMessage("{\"type\": \"event\", \"event\": \"job.completed\", \"id\": \"evt_1\"}");
+        socket.onMessage("not json");
 
         // then
-        completedReceived.get(5, TimeUnit.SECONDS);
-        assertThat(receivedEvents).extracting(SseEvent::event).containsExactly("ready", "job.completed");
+        assertThat(received).extracting(ListenMessage::type, ListenMessage::id)
+                .containsExactly(tuple("ready", null),
+                        tuple("event", "evt_1"));
     }
 
     @Test
-    void shouldSendForwardUrlWhenListeningWithForwardTarget() throws Exception {
+    void shouldConnectToWebSocketWithForwardUrlWhenListeningWithForwardTarget() {
 
         // given
-        SseEvent ready = new SseEvent("ready", "{\"signingSecret\":\"whsec_abc\"}", null);
-        givenWebhookEventsAreStreamed("/cli/webhooks/events?forwardTo=http%3A%2F%2Flocalhost%3A8080%2Fevents", ready);
-        CompletableFuture<SseEvent> readyReceived = new CompletableFuture<>();
+        URI forwardTo = URI.create("http://localhost:8080/events");
+        URI expected = URI.create(baseUrl.replaceFirst("^http", "ws")
+                + "/cli/webhooks/events?forwardTo=http%3A%2F%2Flocalhost%3A8080%2Fevents");
 
         // when
-        connection = webhookClient.listen(ACCESS_TOKEN, URI.create("http://localhost:8080/events"),
-                Set.of(WebhookEvents.ALL), readyReceived::complete);
+        webhookClient.listen(ACCESS_TOKEN, forwardTo, Set.of(WebhookEvents.ALL), message -> { });
 
         // then
-        assertThat(readyReceived.get(5, TimeUnit.SECONDS).event()).isEqualTo("ready");
+        then(webSocketClient).should().connect(eq(expected), eq(ACCESS_TOKEN), any());
     }
 
     @Test
@@ -368,21 +351,12 @@ class WebhookClientTest {
                                 """.formatted(type))));
     }
 
-    private void givenWebhookEventsAreStreamed(String url, SseEvent... events) {
+    /** Listening, with the listener the WebSocket client got, to hand it messages as WhaleDoc would. */
+    private MessageListener givenListening(Set<String> events, List<ListenMessage> received) {
 
-        StringBuilder body = new StringBuilder();
-
-        for (SseEvent event : events) {
-            if (event.id() != null) {
-                body.append("id: %s%n".formatted(event.id()));
-            }
-            body.append("event: %s%ndata: %s%n%n".formatted(event.event(), event.data()));
-        }
-
-        stubFor(get(urlEqualTo(url))
-                .withHeader("Authorization", equalTo("Bearer " + ACCESS_TOKEN))
-                .willReturn(aResponse()
-                        .withHeader("Content-Type", "text/event-stream")
-                        .withBody(body.toString())));
+        webhookClient.listen(ACCESS_TOKEN, events, received::add);
+        ArgumentCaptor<MessageListener> listener = ArgumentCaptor.forClass(MessageListener.class);
+        then(webSocketClient).should().connect(any(), eq(ACCESS_TOKEN), listener.capture());
+        return listener.getValue();
     }
 }

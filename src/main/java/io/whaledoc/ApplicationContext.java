@@ -9,6 +9,7 @@ import io.whaledoc.config.ConfigManager;
 import io.whaledoc.console.Console;
 import io.whaledoc.http.ApiClient;
 import io.whaledoc.http.SseClient;
+import io.whaledoc.http.WebSocketClient;
 import io.whaledoc.update.UpdateService;
 import io.whaledoc.webhook.WebhookClient;
 import io.whaledoc.workspace.WorkspaceClient;
@@ -46,7 +47,7 @@ public record ApplicationContext(
                 Console.system(),
                 ConfigManager.forCurrentUser(objectMapper),
                 new AuthClient(apiClient, sseClient, objectMapper),
-                new WebhookClient(apiClient, sseClient, createForwardClient(), objectMapper),
+                new WebhookClient(apiClient, new WebSocketClient(httpClient), createForwardClient(), objectMapper),
                 new WorkspaceClient(apiClient),
                 UpdateService.create(httpClient, config.releasesUrl())
         );
