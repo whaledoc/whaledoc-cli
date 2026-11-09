@@ -3,6 +3,7 @@ package io.whaledoc.http;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
+import io.whaledoc.console.TerminalText;
 import io.whaledoc.exceptions.ApiException;
 import org.apache.commons.lang3.StringUtils;
 
@@ -26,8 +27,8 @@ final class ErrorResponses {
 
     static ApiException toException(int statusCode, String body, HttpHeaders headers) {
 
-        String message = problemMessage(body)
-                .orElseGet(() -> plainMessage(statusCode, body));
+        String message = TerminalText.clean(problemMessage(body)
+                .orElseGet(() -> plainMessage(statusCode, body)));
 
         return new ApiException(statusCode, message,
                 RetryAfter.parse(headers.firstValue(RETRY_AFTER_HEADER), Instant.now()).orElse(null));

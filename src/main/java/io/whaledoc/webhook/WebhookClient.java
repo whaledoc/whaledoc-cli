@@ -3,6 +3,7 @@ package io.whaledoc.webhook;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.whaledoc.console.TerminalText;
 import io.whaledoc.exceptions.ApiException;
 import io.whaledoc.http.ApiClient;
 import io.whaledoc.http.ApiConstants;
@@ -128,7 +129,9 @@ public final class WebhookClient {
     /** A field of a message about the connection itself, such as the signing secret of {@code ready}. */
     public Optional<String> field(ListenMessage message, String name) {
 
-        return Optional.ofNullable(readTree(message.json()).get(name)).flatMap(WebhookClient::text);
+        return Optional.ofNullable(readTree(message.json()).get(name))
+                .flatMap(WebhookClient::text)
+                .map(TerminalText::clean);
     }
 
     /**

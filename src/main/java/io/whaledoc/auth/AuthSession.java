@@ -1,5 +1,6 @@
 package io.whaledoc.auth;
 
+import io.whaledoc.console.TerminalText;
 import org.apache.commons.lang3.StringUtils;
 
 import java.net.URI;
@@ -23,5 +24,7 @@ public record AuthSession(String sessionId, URI authorizationUrl, String authCod
         if (StringUtils.isBlank(authCode)) {
             throw new IllegalArgumentException("authCode must not be blank");
         }
+
+        authCode = TerminalText.clean(authCode);
     }
 }
