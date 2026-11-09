@@ -27,6 +27,14 @@ public class UpdateCommand implements Callable<Integer> {
     )
     private boolean checkOnly;
 
+    // For the release build's smoke test: proves the native executable can check release signatures
+    @Option(
+            names = "--verify-key",
+            hidden = true,
+            description = "Check that the CLI can verify signed releases."
+    )
+    private boolean verifyKeyOnly;
+
     private final UpdateService updateService;
     private final Version currentVersion;
     private final Console console;
@@ -39,6 +47,10 @@ public class UpdateCommand implements Callable<Integer> {
 
     @Override
     public Integer call() {
+
+        if (verifyKeyOnly) {
+            return verifyKey();
+        }
 
         if (!CurrentExecutable.isNativeImage()) {
             console.error("'whaledoc update' only works for an installed WhaleDoc CLI, not when running from a JAR.");
@@ -82,6 +94,20 @@ public class UpdateCommand implements Callable<Integer> {
         } catch (UpdateException e) {
             log.error("Update failed", e);
             console.error("Update failed: " + e.getMessage());
+            return 1;
+        }
+    }
+
+    private int verifyKey() {
+
+        try {
+            updateService.checkReleaseKey();
+            console.success("The CLI can verify signed releases");
+            return 0;
+
+        } catch (UpdateException e) {
+            log.error("Release key check failed", e);
+            console.error("Release key check failed: " + e.getMessage());
             return 1;
         }
     }

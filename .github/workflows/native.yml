@@ -74,6 +74,8 @@ jobs:
           "$bin" --help
           "$bin" listen --help
           "$bin" update --help
+          # Checks a signature with the built-in release key: fails if the executable lacks Ed25519
+          "$bin" update --verify-key
 
       - name: Package
         shell: bash
