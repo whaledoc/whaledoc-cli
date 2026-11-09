@@ -32,6 +32,21 @@ class ErrorResponsesTest {
     }
 
     @Test
+    void shouldRemoveTerminalControlCharactersWhenDetailHoldsThem() {
+
+        // given
+        String body = """
+                {"status": 400, "detail": "Name \\u001b[2Jis taken.\\r Done"}
+                """;
+
+        // when
+        ApiException exception = ErrorResponses.toException(400, body, noHeaders());
+
+        // then
+        assertThat(exception).hasMessage("Name [2Jis taken. Done");
+    }
+
+    @Test
     void shouldUseTitleWhenProblemDetailsHaveNoDetail() {
 
         // given

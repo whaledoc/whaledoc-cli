@@ -1,5 +1,6 @@
 package io.whaledoc.auth;
 
+import io.whaledoc.console.TerminalText;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.Optional;
@@ -15,6 +16,9 @@ public record AuthenticationEvent(String accessToken, String accountEmail, Strin
         if (StringUtils.isBlank(accessToken)) {
             throw new IllegalArgumentException("accessToken must not be blank");
         }
+
+        accountEmail = TerminalText.clean(accountEmail);
+        workspaceName = TerminalText.clean(workspaceName);
     }
 
     public Optional<String> account() {

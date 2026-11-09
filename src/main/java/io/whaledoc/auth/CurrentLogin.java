@@ -1,6 +1,7 @@
 package io.whaledoc.auth;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import io.whaledoc.console.TerminalText;
 
 import java.util.Optional;
 
@@ -11,15 +12,32 @@ import java.util.Optional;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record CurrentLogin(Account account, String deviceName, Workspace workspace) {
 
+    public CurrentLogin {
+
+        deviceName = TerminalText.clean(deviceName);
+    }
+
     public Optional<Workspace> currentWorkspace() {
         return Optional.ofNullable(workspace);
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Account(String email, String fullName) {
+
+        public Account {
+
+            email = TerminalText.clean(email);
+            fullName = TerminalText.clean(fullName);
+        }
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Workspace(String slug, String name) {
+
+        public Workspace {
+
+            slug = TerminalText.clean(slug);
+            name = TerminalText.clean(name);
+        }
     }
 }
