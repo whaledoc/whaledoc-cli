@@ -4,7 +4,11 @@ name: Release
 #
 # Start it from Actions > Release > Run workflow on main and pick major, minor or patch:
 # the next version is calculated from the latest release tag. The tag is only created
-# once every build has passed. Pushing a v* tag by hand releases that exact version.
+# once every build has passed, by this workflow: a tag pushed by hand releases nothing.
+#
+# checksums.txt is signed with the release key (Ed25519). `whaledoc update` and the Homebrew
+# job check that signature against packaging/release-key.pub before trusting any checksum.
+# The private key is the secret RELEASE_SIGNING_KEY of the `release` environment.
 
 on:
   workflow_dispatch:
@@ -18,8 +22,6 @@ on:
         description: Optional pre-release label, e.g. beta.1. Leave empty for a stable release.
         type: string
         required: false
-  push:
-    tags: ['v*']
 
 permissions:
   contents: read
@@ -37,7 +39,7 @@ jobs:
       prerelease: ${{ steps.version.outputs.prerelease }}
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
@@ -49,31 +51,27 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
-            tag="$GITHUB_REF_NAME"
-          else
-            if [ "$GITHUB_REF" != "refs/heads/main" ]; then
-              echo "::error::Releases can only be created from main"
-              exit 1
-            fi
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::Releases can only be created from main"
+            exit 1
+          fi
 
-            # Bump from the latest stable release; the first release starts from v0.0.0
-            latest="$(git tag --list 'v*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 || true)"
-            IFS=. read -r major minor patch <<< "${latest:-v0.0.0}"
-            major="${major#v}"
+          # Bump from the latest stable release; the first release starts from v0.0.0
+          latest="$(git tag --list 'v*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 || true)"
+          IFS=. read -r major minor patch <<< "${latest:-v0.0.0}"
+          major="${major#v}"
 
-            case "$BUMP" in
-              major) major=$((major + 1)); minor=0; patch=0 ;;
-              minor) minor=$((minor + 1)); patch=0 ;;
-              patch) patch=$((patch + 1)) ;;
-            esac
+          case "$BUMP" in
+            major) major=$((major + 1)); minor=0; patch=0 ;;
+            minor) minor=$((minor + 1)); patch=0 ;;
+            patch) patch=$((patch + 1)) ;;
+          esac
 
-            tag="v$major.$minor.$patch${LABEL:+-$LABEL}"
+          tag="v$major.$minor.$patch${LABEL:+-$LABEL}"
 
-            if git rev-parse -q --verify "refs/tags/$tag" > /dev/null; then
-              echo "::error::Tag $tag already exists"
-              exit 1
-            fi
+          if git rev-parse -q --verify "refs/tags/$tag" > /dev/null; then
+            echo "::error::Tag $tag already exists"
+            exit 1
           fi
 
           version="${tag#v}"
@@ -99,13 +97,17 @@ jobs:
   publish:
     needs: [version, native]
     runs-on: ubuntu-latest
+    environment: release
     permissions:
       contents: write
+      # For the provenance attestation: a short-lived signing identity and the right to store it
+      id-token: write
+      attestations: write
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           path: dist
           pattern: whaledoc-*
@@ -119,8 +121,30 @@ jobs:
           # Read by `whaledoc update` to find the latest version without calling the GitHub API
           echo "$VERSION" > dist/version.txt
           cd dist
-          sha256sum * > checksums.txt
+          files=(*)
+          # The first line names the release, so its signed checksums can't pass for another release's
+          { echo "# whaledoc v$VERSION"; sha256sum "${files[@]}"; } > checksums.txt
           cat checksums.txt
+
+      - name: Sign checksums
+        env:
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          umask 077
+          key="$RUNNER_TEMP/release-key.pem"
+          trap 'rm -f "$key"' EXIT
+          printf '%s\n' "$RELEASE_SIGNING_KEY" > "$key"
+
+          openssl pkeyutl -sign -inkey "$key" -rawin -in dist/checksums.txt -out dist/checksums.txt.sig
+          # The key the CLI carries must accept it, or every update of this release would fail
+          openssl pkeyutl -verify -pubin -inkey packaging/release-key.pub -rawin \
+            -in dist/checksums.txt -sigfile dist/checksums.txt.sig
+
+      # Lets anyone check where a file came from: gh attestation verify <file> --repo whaledoc/whaledoc-cli
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/*
 
       - name: Create GitHub release
         env:
@@ -128,15 +152,8 @@ jobs:
           TAG: ${{ needs.version.outputs.tag }}
           PRERELEASE: ${{ needs.version.outputs.prerelease }}
         run: |
-          args=(--title "$TAG" --generate-notes)
-
-          # A pushed tag already exists; otherwise the release creates the tag on the built commit
-          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
-            args+=(--verify-tag)
-          else
-            args+=(--target "$GITHUB_SHA")
-          fi
-
+          # The release creates the tag on the built commit
+          args=(--title "$TAG" --generate-notes --target "$GITHUB_SHA")
           [ "$PRERELEASE" = "true" ] && args+=(--prerelease)
 
           gh release create "$TAG" dist/* "${args[@]}"
@@ -146,11 +163,12 @@ jobs:
     needs: [version, publish]
     if: needs.version.outputs.prerelease == 'false'
     runs-on: ubuntu-latest
+    environment: release
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: whaledoc/homebrew-tap
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
@@ -162,7 +180,15 @@ jobs:
           TAG: ${{ needs.version.outputs.tag }}
           VERSION: ${{ needs.version.outputs.version }}
         run: |
-          gh release download "$TAG" --pattern checksums.txt
+          set -euo pipefail
+          gh release download "$TAG" --pattern checksums.txt --pattern checksums.txt.sig
+          # The formula's checksums come only from a release signed with the release key
+          openssl pkeyutl -verify -pubin -inkey packaging/release-key.pub -rawin \
+            -in checksums.txt -sigfile checksums.txt.sig
+          if [ "$(head -n 1 checksums.txt)" != "# whaledoc v$VERSION" ]; then
+            echo "::error::checksums.txt doesn't belong to v$VERSION"
+            exit 1
+          fi
           mkdir -p tap/Formula
           sh packaging/homebrew/formula.sh "$VERSION" checksums.txt > tap/Formula/whaledoc.rb
 
