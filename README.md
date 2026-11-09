@@ -73,6 +73,24 @@ curl -fsSL https://github.com/whaledoc/whaledoc-cli/releases/latest/download/ins
 
 Download the archive for your platform from the [GitHub Releases](https://github.com/whaledoc/whaledoc-cli/releases) page, extract it, and put `whaledoc` (or `whaledoc.exe`) in a directory on your `PATH`. Each release includes a `checksums.txt` file to verify the download.
 
+### Verify a download
+
+Every release's `checksums.txt` is signed with the WhaleDoc release key, [`packaging/release-key.pub`](packaging/release-key.pub). Download `checksums.txt` and `checksums.txt.sig` from the release, then check the signature and your archive (OpenSSL 3):
+
+```sh
+openssl pkeyutl -verify -pubin -inkey release-key.pub -rawin -in checksums.txt -sigfile checksums.txt.sig
+sha256sum --ignore-missing -c checksums.txt        # Linux
+shasum -a 256 --ignore-missing -c checksums.txt    # macOS
+```
+
+The first line of `checksums.txt` names the release it belongs to (`# whaledoc v1.2.0`). Both commands skip it.
+
+Each file also has a build provenance attestation, which shows it was built by this repository's release workflow:
+
+```sh
+gh attestation verify whaledoc-linux-x64.tar.gz --repo whaledoc/whaledoc-cli
+```
+
 ## Getting Started
 
 Authenticate the CLI with your WhaleDoc account:
@@ -285,7 +303,7 @@ Update the CLI to the latest version.
 whaledoc update
 ```
 
-The CLI downloads the release for your platform, verifies its checksum, and replaces itself. Use `--check` to only see whether a newer version is available.
+The CLI downloads the release for your platform, checks that its checksums are signed with the WhaleDoc release key, verifies its checksum, and replaces itself. Use `--check` to only see whether a newer version is available.
 
 ## Webhook Events
 
@@ -513,14 +531,9 @@ To publish a release, open **Actions → Release → Run workflow** on `main` an
 
 The first release is created with `major` (`0.0.0` → `1.0.0`). To publish a pre-release such as `1.5.0-beta.1`, also fill in the pre-release label (`beta.1`). Pre-releases are not installed by default; testers can install one with `WHALEDOC_VERSION=1.5.0-beta.1`.
 
-The workflow calculates the next version from the latest release tag, builds and tests every platform, and only then creates the tag and a GitHub release with the executables, a `checksums.txt` file, the install scripts and generated release notes.
+The workflow calculates the next version from the latest release tag, builds and tests every platform, and only then creates the tag and a GitHub release with the executables, a signed `checksums.txt` file, a build provenance attestation for every file, the install scripts and generated release notes. Releases come only from this workflow: pushing a tag by hand publishes nothing.
 
-You can also release a specific version by pushing its tag:
-
-```sh
-git tag v1.2.3
-git push origin v1.2.3
-```
+The `release` environment holds the two secrets the workflow needs: `RELEASE_SIGNING_KEY`, the private half of `packaging/release-key.pub` (PEM), and `HOMEBREW_TAP_TOKEN`, which may only write to `whaledoc/homebrew-tap`.
 
 The version in `pom.xml` stays at `0.0.0-SNAPSHOT`; releases take their version from the tag.
 

@@ -35,9 +35,9 @@ jobs:
             os: windows-latest
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: graalvm/setup-graalvm@v1
+      - uses: graalvm/setup-graalvm@f70bc8032f90a104502824a54bcb94b6f01715bc # v1.6.8
         with:
           java-version: '25'
           distribution: graalvm-community
@@ -74,6 +74,8 @@ jobs:
           "$bin" --help
           "$bin" listen --help
           "$bin" update --help
+          # Checks a signature with the built-in release key: fails if the executable lacks Ed25519
+          "$bin" update --verify-key
 
       - name: Package
         shell: bash
@@ -124,7 +126,7 @@ jobs:
 
           Write-Host "Installer installs, adds to PATH and uninstalls cleanly"
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: whaledoc-${{ matrix.target }}
           path: dist/*

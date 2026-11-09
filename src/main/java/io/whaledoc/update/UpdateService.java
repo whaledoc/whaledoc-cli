@@ -6,6 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.io.IOException;
 import java.net.http.HttpClient;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
@@ -19,10 +20,12 @@ import java.util.stream.Stream;
 public final class UpdateService {
 
     private static final String CHECKSUMS_FILE = "checksums.txt";
+    private static final String SIGNATURE_FILE = CHECKSUMS_FILE + ".sig";
 
     private final ReleaseClient releaseClient;
     private final ArchiveExtractor archiveExtractor;
     private final ExecutableReplacer executableReplacer;
+    private final ReleaseSignature releaseSignature;
     private final Platform platform;
 
     public static UpdateService create(HttpClient httpClient, String releasesUrl) {
@@ -33,6 +36,7 @@ public final class UpdateService {
                 new ReleaseClient(httpClient, releasesUrl),
                 new ArchiveExtractor(platform),
                 new ExecutableReplacer(platform),
+                ReleaseSignature.official(),
                 platform
         );
     }
@@ -56,6 +60,12 @@ public final class UpdateService {
         }
     }
 
+    /** Checks that this executable can check release signatures, without downloading anything. */
+    public void checkReleaseKey() {
+
+        releaseSignature.checkKey();
+    }
+
     public Version fetchLatestVersion() {
         return releaseClient.fetchLatestVersion();
     }
@@ -67,8 +77,11 @@ public final class UpdateService {
         try {
             Path archive = releaseClient.download(version, platform.archiveName(), directory);
             Path checksumsFile = releaseClient.download(version, CHECKSUMS_FILE, directory);
+            Path signatureFile = releaseClient.download(version, SIGNATURE_FILE, directory);
 
-            readChecksums(checksumsFile).verify(archive);
+            Checksums checksums = readSignedChecksums(checksumsFile, signatureFile);
+            checksums.verifyRelease(version);
+            checksums.verify(archive);
             executableReplacer.replace(executable, archiveExtractor.extractExecutable(archive));
 
         } finally {
@@ -76,13 +89,21 @@ public final class UpdateService {
         }
     }
 
-    private static Checksums readChecksums(Path checksumsFile) {
+    // The checksums are trusted only once their signature checks out: they come from the same release as the archive
+    private Checksums readSignedChecksums(Path checksumsFile, Path signatureFile) {
+
+        byte[] checksums = readBytes(checksumsFile);
+        releaseSignature.verify(checksums, readBytes(signatureFile));
+        return Checksums.parse(new String(checksums, StandardCharsets.UTF_8));
+    }
+
+    private static byte[] readBytes(Path file) {
 
         try {
-            return Checksums.parse(Files.readString(checksumsFile));
+            return Files.readAllBytes(file);
 
         } catch (IOException e) {
-            throw new UpdateException("Unable to read " + CHECKSUMS_FILE + ".", e);
+            throw new UpdateException("Unable to read " + file.getFileName() + ".", e);
         }
     }
 
